@@ -8,6 +8,7 @@ dependencies:
 
 runtime:
     extensions:
+        - pdo_pgsql
         
 
 variables:
