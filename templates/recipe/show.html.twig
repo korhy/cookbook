@@ -1,0 +1,32 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}
+	Recipe Book -
+	{{recipe.title}}
+{% endblock %}
+
+{% block body %}
+	<h2>{{ recipe.title}}</h2>
+	<h3>{{ recipe.subtitle }}</h3>
+
+	{% if comments|length > 0 %}
+		<div>
+			There are
+			{{ comments|length }}
+			comments.</div>
+		{% for comment in comments %}
+			{% if comment.photofilename %}
+				<img src="{{ asset('uploads/photos/') ~ comment.photofilename }}" style="max-width: 200px"/>
+			{% endif %}
+
+			<h4>{{ comment.author }}</h4>
+			<small>
+				{{ comment.createdAt|format_datetime('medium', 'short')}}
+			</small>
+
+			<p>{{ comment.text }}</p>
+		{% endfor %}
+
+
+	{% endif %}
+{% endblock %}
