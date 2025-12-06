@@ -18,3 +18,60 @@
 /public/assets/
 /assets/vendor/
 ###< symfony/asset-mapper ###
+
+
+###> symfony/webpack-encore-bundle ###
+/node_modules/
+/public/build/
+npm-debug.log
+yarn-error.log
+###< symfony/webpack-encore-bundle ###
+/public/images/personal_projects/
+
+###> docker ###
+/.docker/
+###< docker ###
+
+# Ignore IDE specific files
+/.idea/
+/.vscode/
+
+# Ignore OS specific files
+.DS_Store
+Thumbs.db
+
+# Ignore log files and databases
+*.log
+*.sql
+
+# Ignore temporary files
+*.tmp
+*.temp
+/tmp/
+/temp/
+
+# Ignore build files
+/build/
+/dist/
+
+# Ignore environment variables files
+.env
+.env.local
+.env.*.local
+.env.testing
+.env.production
+
+# Ignore Composer files
+/composer.phar
+
+# Ignore Node.js files
+/node_modules/
+/npm-debug.log
+/yarn-error.log
+/pnpm-debug.log
+supervisord.pid
+supervisord.log
+
+# Apache
+/.htaccess
+/public/.htaccess
