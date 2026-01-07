@@ -35,6 +35,9 @@
             "migrations/.gitignore"
         ]
     },
+    "knplabs/knp-paginator-bundle": {
+        "version": "v6.10.0"
+    },
     "phpunit/phpunit": {
         "version": "12.5",
         "recipe": {
@@ -318,6 +321,9 @@
         "files": [
             "config/packages/messenger.yaml"
         ]
+    },
+    "symfonycasts/verify-email-bundle": {
+        "version": "v1.18.0"
     },
     "twig/extra-bundle": {
         "version": "v3.22.1"
