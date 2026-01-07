@@ -75,3 +75,10 @@ supervisord.log
 # Apache
 /.htaccess
 /public/.htaccess
+
+# Ignore data files
+/public/data/
+
+
+# Ignore Adminer database management tool
+/public/adminer.php
