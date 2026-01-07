@@ -7,6 +7,8 @@ framework:
 
     #esi: true
     #fragments: true
+    # Allow us to use DELETE method on form
+    http_method_override: true
 
 when@test:
     framework:
