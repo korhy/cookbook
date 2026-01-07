@@ -1,0 +1,13 @@
+{% extends '/admin/admin.html.twig' %}
+
+{% block title "Recipe : " ~ recipe.title %}
+
+{% block body %}
+    <h1>{{ recipe.title }} :</h1>
+
+    <div class="container">
+        {{ recipe.description | nl2br }}
+    </div>
+
+
+{% endblock %}
