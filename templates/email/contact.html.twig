@@ -1,0 +1,9 @@
+{% block content %}
+    Author: {{ contact.name }}<br />
+    Email: {{ contact.email }}<br />
+
+    <p>
+        {{ contact.message | nl2br }}
+    </p>
+{% endblock %}
+
