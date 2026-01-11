@@ -1,0 +1,13 @@
+{% extends '/admin/admin.html.twig' %}
+
+{% block title "Category : " ~ category.name %}
+
+{% block body %}
+    <h1>{{ category.name }} :</h1>
+
+    <div class="container">
+        {{ category.slug | nl2br }}
+    </div>
+
+
+{% endblock %}

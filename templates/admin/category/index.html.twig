@@ -1,0 +1,43 @@
+{% extends '/admin/admin.html.twig' %}
+
+{% block title %}Admin - Category{% endblock %}
+
+{% block body %}
+
+    <div>
+        <h1>Categories</h1>
+        <p> 
+            <a class="btn btn-primary" href="{{ path('admin.category.create') }}">Add</a>
+
+        </p>
+        <table class="table">
+            <thead>
+            <tr>
+                <th scope="col">{{ knp_pagination_sortable(categories, 'Id', 'c.id') }}</th>
+                <th scope="col">{{ knp_pagination_sortable(categories, 'Name', 'c.name') }}</th>
+                <th style="width: 150px;" scope="col">Action</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for category in categories %}
+                <tr>
+                    <td>{{ category.id }}</td>
+                    <td><a href="{{ path('admin.category.show', {id: category.id, slug: category.slug}) }}">{{ category.name }}</a></td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            <a class="btn btn-primary btn-sm" href="{{ path('admin.category.edit', {id: category.id}) }}">Edit</a>
+                            <form action="{{ path('admin.category.remove', {id: category.id}) }}" method="post">
+                                <input type="hidden" name="_method" value="DELETE">
+                                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                        </div>
+                        
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+
+        </table>
+        {{ knp_pagination_render(categories) }}
+    </div>
+{% endblock %}
