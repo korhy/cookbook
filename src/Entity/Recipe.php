@@ -7,11 +7,15 @@ use App\Validator\BanWord;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\Validator\Constraints as Assert;
+use Vich\UploaderBundle\Mapping\Attribute as Vich;
 
 #[ORM\Entity(repositoryClass: RecipeRepository::class)]
+#[ORM\HasLifecycleCallbacks]
 #[UniqueEntity('slug')]
-class Recipe
+#[Vich\Uploadable]
+class Recipe implements SluggableInterface
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -45,6 +49,8 @@ class Recipe
     #[ORM\ManyToOne(inversedBy: 'recipes')]
     private ?Category $category = null;
 
+    #[Vich\UploadableField(mapping: 'recipe_thumbnail', fileNameProperty: 'thumbnail')]
+    private ?File $thumbnailFile = null;
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $thumbnail = null;
 
@@ -147,5 +153,47 @@ class Recipe
         $this->thumbnail = $thumbnail;
 
         return $this;
+    }
+
+    #[ORM\PrePersist]
+    public function setCreatedAtValue(): void
+    {
+        $this->createdAt = new \DateTimeImmutable();
+    }
+
+    #[ORM\PreUpdate]
+    public function setUpdatedAtValue(): void
+    {
+        $this->updatedAt = new \DateTimeImmutable();
+    }
+
+    public function __toString(): string
+    {
+        return $this->title;
+    }
+
+    /**
+     * If manually uploading a file (i.e. not using Symfony Form) ensure an instance
+     * of 'UploadedFile' is injected into this setter to trigger the update. If this
+     * bundle's configuration parameter 'inject_on_load' is set to 'true' this setter
+     * must be able to accept an instance of 'File' as the bundle will inject one here
+     * during Doctrine hydration.
+     *
+     * @param File|\Symfony\Component\HttpFoundation\File\UploadedFile|null $thumbnailFile
+     */
+    public function setThumbnailFile(?File $file = null): void
+    {
+        $this->thumbnailFile = $file;
+
+        if (null !== $file) {
+            // It is required that at least one field changes if you are using doctrine
+            // otherwise the event listeners won't be called and the file is lost
+            $this->updatedAt = new \DateTimeImmutable();
+        }
+    }
+
+    public function getThumbnailFile(): ?File
+    {
+        return $this->thumbnailFile;
     }
 }
