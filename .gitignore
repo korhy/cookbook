@@ -78,6 +78,7 @@ supervisord.log
 
 # Ignore data files
 /public/data/
+/public/images/
 
 
 # Ignore Adminer database management tool

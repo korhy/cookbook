@@ -9,7 +9,7 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: CategoryRepository::class)]
-class Category
+class Category implements SluggableInterface
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -93,5 +93,18 @@ class Category
         }
 
         return $this;
+    }
+
+    public function __toString(): string
+    {
+        return $this->name;
+    }
+
+    /**
+     * Used by the SluggableInterface
+     */
+    public function getTitle(): ?string
+    {
+        return $this->name;
     }
 }
