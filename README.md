@@ -46,7 +46,11 @@
 
 8. Create an admin user to access the admin panel:
    ```bash
-   php bin/console app:create-admin-user
+   symfony console security:hash-password
+   ```
+   Enter your desired password and copy the hashed output. Then run:
+   ```bash
+   symfony run psql -c "INSERT INTO admin (id, username, roles, password) VALUES (nextval('admin_id_seq'), 'admin', '[\"ROLE_ADMIN\"]', 'your_hashed_password_here');" 
    ```
 
 9. Access the application at `http://localhost:8000`.
