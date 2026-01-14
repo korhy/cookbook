@@ -46,10 +46,57 @@
 
 8. Create an admin user to access the admin panel:
    ```bash
-   php bin/console app:create-admin-user
+   symfony console security:hash-password
+   ```
+   Enter your desired password and copy the hashed output. Then run:
+   ```bash
+   symfony run psql -c "INSERT INTO admin (id, username, roles, password) VALUES (nextval('admin_id_seq'), 'admin', '[\"ROLE_ADMIN\"]', 'your_hashed_password_here');" 
    ```
 
 9. Access the application at `http://localhost:8000`.
+
+## Testing
+
+### Setting Up the Test Environment
+
+1. Create the test database:
+   ```bash
+   php bin/console doctrine:database:create --env=test
+   ```
+
+2. Run migrations on the test database:
+   ```bash
+   php bin/console doctrine:migrations:migrate --env=test --no-interaction
+   ```
+
+3. (Optional) Load initial data(Check data section for more info about the file format):
+    ```bash
+    php -d memory_limit=1024M bin/console app:import-csv path/to/your/csv/file.csv --batch-size=25
+    ```
+
+### Running Tests
+
+Run all tests:
+```bash
+php bin/phpunit
+```
+
+Run tests for a specific class:
+```bash
+php bin/phpunit tests/Entity/RecipeTest.php
+```
+
+Run tests with coverage (requires Xdebug):
+```bash
+php bin/phpunit --coverage-html var/coverage
+```
+
+### Test Structure
+
+The project includes:
+- **Unit tests**: Testing entities and services (e.g., `RecipeTest`, `SluggerServiceTest`)
+- **Functional tests**: Testing controllers and HTTP responses (e.g., `SecurityControllerTest`)
+- **Repository tests**: Testing database queries and data retrieval
 
 ## Data Import
 You can import recipes in bulk using the CSV import command. The CSV file should have the following columns:
