@@ -2,6 +2,7 @@
 
 ## Description
 
+A Symfony-based recipe management application that allows you to organize, browse, and manage your cookbook. Features include recipe categorization, ingredient tracking, and an admin panel for easy content management. Supports bulk importing recipes from CSV files.
 
 ## Installation
 ### Requirements
@@ -71,7 +72,7 @@
 
 3. (Optional) Load initial data(Check data section for more info about the file format):
     ```bash
-    php -d memory_limit=1024M bin/console app:import-csv path/to/your/csv/file.csv --batch-size=25
+    php -d memory_limit=1024M bin/console --batch-size=25
     ```
 
 ### Running Tests
