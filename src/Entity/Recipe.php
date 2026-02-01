@@ -4,6 +4,8 @@ namespace App\Entity;
 
 use App\Repository\RecipeRepository;
 use App\Validator\BanWord;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
@@ -18,7 +20,7 @@ use Vich\UploaderBundle\Mapping\Attribute as Vich;
 class Recipe implements SluggableInterface
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
+    #[ORM\GeneratedValue(strategy: 'AUTO')]
     #[ORM\Column]
     private ?int $id = null;
 
@@ -54,9 +56,27 @@ class Recipe implements SluggableInterface
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $thumbnail = null;
 
+    /**
+     * @var Collection<int, RecipeIngredient>
+     */
+    #[ORM\OneToMany(targetEntity: RecipeIngredient::class, mappedBy: 'recipe', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    private Collection $recipeIngredients;
+
+    public function __construct()
+    {
+        $this->recipeIngredients = new ArrayCollection();
+    }
+
     public function getId(): ?int
     {
         return $this->id;
+    }
+
+    public function setId(int $id): static
+    {
+        $this->id = $id;
+
+        return $this;
     }
 
     public function getTitle(): ?string
@@ -195,5 +215,35 @@ class Recipe implements SluggableInterface
     public function getThumbnailFile(): ?File
     {
         return $this->thumbnailFile;
+    }
+
+    /**
+     * @return Collection<int, RecipeIngredient>
+     */
+    public function getRecipeIngredients(): Collection
+    {
+        return $this->recipeIngredients;
+    }
+
+    public function addRecipeIngredient(RecipeIngredient $recipeIngredient): static
+    {
+        if (!$this->recipeIngredients->contains($recipeIngredient)) {
+            $this->recipeIngredients->add($recipeIngredient);
+            $recipeIngredient->setRecipe($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRecipeIngredient(RecipeIngredient $recipeIngredient): static
+    {
+        if ($this->recipeIngredients->removeElement($recipeIngredient)) {
+            // set the owning side to null (unless already changed)
+            if ($recipeIngredient->getRecipe() === $this) {
+                $recipeIngredient->setRecipe(null);
+            }
+        }
+
+        return $this;
     }
 }
