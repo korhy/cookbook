@@ -11,3 +11,8 @@ api_platform:
         pagination_items_per_page: 20
         cache_headers:
             vary: ['Content-Type', 'Authorization', 'Origin']
+    swagger:
+        api_keys:
+            JWT:
+                name: Authorization
+                type: header
