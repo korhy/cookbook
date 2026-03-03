@@ -83,3 +83,7 @@ supervisord.log
 
 # Ignore Adminer database management tool
 /public/adminer.php
+
+###> lexik/jwt-authentication-bundle ###
+/config/jwt/*.pem
+###< lexik/jwt-authentication-bundle ###
