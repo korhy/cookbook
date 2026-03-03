@@ -2,11 +2,17 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
 use App\Repository\IngredientRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Attribute\Groups;
 
+#[ApiResource(
+    normalizationContext: ['groups' => ['ingredient:read']],
+    denormalizationContext: ['groups' => ['ingredient:write']],
+)]
 #[ORM\Entity(repositoryClass: IngredientRepository::class)]
 #[ORM\HasLifecycleCallbacks]
 class Ingredient
@@ -14,12 +20,15 @@ class Ingredient
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'AUTO')]
     #[ORM\Column]
+    #[Groups(['ingredient:read', 'recipe:read'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
+    #[Groups(['ingredient:read', 'ingredient:write', 'recipe:read'])]
     private ?string $name = null;
 
     #[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['ingredient:read', 'ingredient:write', 'recipe:read'])]
     private ?string $unit = null;
 
     #[ORM\Column]
