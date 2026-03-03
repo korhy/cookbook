@@ -17,7 +17,18 @@ security:
             # Ensure dev tools and static assets are always allowed
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
-        main:
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: app_user_provider
+            json_login:
+                check_path: /api/login_check
+                username_path: username
+                password_path: password
+                success_handler: lexik_jwt_authentication.handler.authentication_success
+                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+            jwt: ~
+        admin:
             lazy: true
             provider: app_user_provider
             form_login:
@@ -42,11 +53,13 @@ security:
 
             # https://symfony.com/doc/current/security/impersonating_user.html
             # switch_user: true
-
     # Note: Only the *first* matching rule is applied
     access_control:
+        - { path: ^/api/login_check, roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/docs,      roles: PUBLIC_ACCESS }
+        - { path: ^/api, roles: ROLE_ADMIN }
         - { path: ^/login, roles: PUBLIC_ACCESS }
-        - { path: ^/, roles: ROLE_ADMIN }
+        - { path: ^/admin, roles: ROLE_ADMIN }
 
 when@test:
     security:

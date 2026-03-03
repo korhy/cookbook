@@ -2,27 +2,37 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
 use App\Repository\CategoryRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
+
+#[ApiResource(
+    normalizationContext: ['groups' => ['category:read']],
+    denormalizationContext: ['groups' => ['category:write']],
+)]
 #[ORM\Entity(repositoryClass: CategoryRepository::class)]
 class Category implements SluggableInterface
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'AUTO')]
     #[ORM\Column]
+    #[Groups(['category:read', 'recipe:read'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
     #[Assert\Length(min: 3)]
+    #[Groups(['category:read', 'category:write', 'recipe:read'])]
     private ?string $name = null;
 
     #[ORM\Column(length: 255)]
     #[Assert\Length(min: 3)]
     #[Assert\Regex('/^[a-z0-9]+(?:-[a-z0-9]+)*$/')]
+    #[Groups(['category:read', 'category:write', 'recipe:read'])]
     private ?string $slug = null;
 
     /**
