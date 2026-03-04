@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use App\Repository\RecipeIngredientRepository;
 use Doctrine\ORM\Mapping as ORM;
@@ -21,7 +22,8 @@ class RecipeIngredient
     private ?int $id = null;
 
     #[ORM\Column(nullable: true)]
-    #[Groups(['recipe_ingredient:read', 'recipe_ingredient:write', 'recipe:read'])]
+    #[Groups(['recipe_ingredient:read', 'recipe_ingredient:write', 'recipe:read', 'recipe:write'])]
+    #[ApiProperty(example: 2)]
     private ?float $quantity = null;
 
     #[ORM\ManyToOne(inversedBy: 'recipeIngredients')]
@@ -31,7 +33,8 @@ class RecipeIngredient
 
     #[ORM\ManyToOne(inversedBy: 'recipeIngredients')]
     #[ORM\JoinColumn(nullable: false)]
-    #[Groups(['recipe_ingredient:read', 'recipe_ingredient:write', 'recipe:read'])]
+    #[Groups(['recipe_ingredient:read', 'recipe_ingredient:write', 'recipe:read', 'recipe:write'])]
+    #[ApiProperty(example: '/api/ingredients/1')]
     private ?Ingredient $ingredient = null;
 
     public function getId(): ?int

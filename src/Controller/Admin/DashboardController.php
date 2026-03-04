@@ -4,6 +4,7 @@ namespace App\Controller\Admin;
 
 use App\Entity\Category;
 use App\Entity\Ingredient;
+use App\Entity\Instruction;
 use App\Entity\Recipe;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
@@ -41,5 +42,6 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToCrud('Recipe', 'fas fa-utensils', Recipe::class);
         yield MenuItem::linkToCrud('Category', 'fas fa-list', Category::class);
         yield MenuItem::linkToCrud('Ingredient', 'fas fa-carrot', Ingredient::class);
+        yield MenuItem::linkToCrud('Instruction', 'fas fa-clipboard-list', Instruction::class);
     }
 }

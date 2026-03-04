@@ -4,6 +4,7 @@ namespace App\Controller\Admin;
 
 use App\Entity\Recipe;
 use App\Form\RecipeIngredientType;
+use App\Form\RecipeInstructionType;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use Symfony\Component\Routing\Attribute\Route;
@@ -26,11 +27,12 @@ final class RecipeController extends AbstractCrudController
     {
         yield IntegerField::new('id')->onlyOnIndex();
         yield TextField::new('title');
+        yield AssociationField::new('category')->autocomplete();
         yield TextareaField::new('description');
+        yield IntegerField::new('duration');
         yield TextField::new('thumbnailFile')
             ->setFormType(VichImageType::class)
             ->onlyOnForms();
-        yield AssociationField::new('category')->autocomplete();
         yield CollectionField::new('recipeIngredients', 'Ingredients')
             ->setEntryType(RecipeIngredientType::class)
             ->allowAdd()
@@ -40,7 +42,15 @@ final class RecipeController extends AbstractCrudController
                 'by_reference' => false,
             ])
             ->onlyOnForms();
-        yield IntegerField::new('duration');
+        yield CollectionField::new('instructions')
+            ->setEntryType(RecipeInstructionType::class)
+            ->allowAdd()
+            ->allowDelete()
+            ->setEntryIsComplex()
+            ->setFormTypeOptions([
+                'by_reference' => false,
+            ])
+            ->onlyOnForms();
     }
 
     public function configureFilters(Filters $filters): Filters
