@@ -77,6 +77,6 @@ class RecipeIngredient
 
     public function __toString(): string
     {
-        return $this->ingredient ? $this->ingredient->getId() : '';
+        return $this->ingredient ?'id: ' . $this->ingredient->getId() . ' | name: ' . $this->ingredient->getName() . ' | quantity: ' . $this->quantity : '';
     }
 }
