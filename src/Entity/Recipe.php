@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use App\Repository\RecipeRepository;
 use App\Validator\BanWord;
@@ -35,17 +36,20 @@ class Recipe implements SluggableInterface
     #[Assert\Length(min: 5)]
     #[BanWord(banWords: ['spam', 'viagra'])]
     #[Groups(['recipe:read', 'recipe:write'])]
+    #[ApiProperty(example: 'Chocolate Cake')]
     private ?string $title = null;
 
     #[ORM\Column(length: 255)]
     #[Assert\Length(min: 5)]
     #[Assert\Regex('/^[a-z0-9]+(?:-[a-z0-9]+)*$/')]
     #[Groups(['recipe:read', 'recipe:write'])]
+    #[ApiProperty(example: 'chocolate-cake')]
     private ?string $slug = null;
 
     #[ORM\Column(type: Types::TEXT)]
     #[Assert\Length(min: 5)]
     #[Groups(['recipe:read', 'recipe:write'])]
+    #[ApiProperty(example: 'My delicious chocolate cake recipe.')]
     private ?string $description = null;
 
     #[ORM\Column]
@@ -63,6 +67,7 @@ class Recipe implements SluggableInterface
 
     #[ORM\ManyToOne(inversedBy: 'recipes')]
     #[Groups(['recipe:read', 'recipe:write'])]
+    #[ApiProperty(example: '/api/categories/1')]
     private ?Category $category = null;
 
     #[Vich\UploadableField(mapping: 'recipe_thumbnail', fileNameProperty: 'thumbnail')]
@@ -78,9 +83,18 @@ class Recipe implements SluggableInterface
     #[Groups(['recipe:read', 'recipe:write'])]
     private Collection $recipeIngredients;
 
+    /**
+     * @var Collection<int, Instruction>
+     */
+    #[ORM\OneToMany(targetEntity: Instruction::class, mappedBy: 'recipe', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    #[ORM\OrderBy(['position' => 'ASC'])]
+    #[Groups(['recipe:read', 'recipe:write'])]
+    private Collection $instructions;
+
     public function __construct()
     {
         $this->recipeIngredients = new ArrayCollection();
+        $this->instructions = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -257,6 +271,36 @@ class Recipe implements SluggableInterface
             // set the owning side to null (unless already changed)
             if ($recipeIngredient->getRecipe() === $this) {
                 $recipeIngredient->setRecipe(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Instruction>
+     */
+    public function getInstructions(): Collection
+    {
+        return $this->instructions;
+    }
+
+    public function addInstruction(Instruction $instruction): static
+    {
+        if (!$this->instructions->contains($instruction)) {
+            $this->instructions->add($instruction);
+            $instruction->setRecipe($this);
+        }
+
+        return $this;
+    }
+
+    public function removeInstruction(Instruction $instruction): static
+    {
+        if ($this->instructions->removeElement($instruction)) {
+            // set the owning side to null (unless already changed)
+            if ($instruction->getRecipe() === $this) {
+                $instruction->setRecipe(null);
             }
         }
 
