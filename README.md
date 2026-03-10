@@ -2,59 +2,94 @@
 
 ## Description
 
-A Symfony-based recipe management application that allows you to organize, browse, and manage your cookbook. Features include recipe categorization, ingredient tracking, and an admin panel for easy content management. Supports bulk importing recipes from CSV files.
+A Symfony-based recipe management application that allows you to organize, browse, and manage your cookbook. Features include recipe categorization, ingredient tracking, step-by-step instructions, and an admin panel for easy content management. Exposes a REST API built with API Platform, secured with JWT authentication. Supports bulk importing recipes from CSV files.
 
-## Installation
-### Requirements
+## Requirements
 - PHP 8.1 or higher
 - Composer
 - Docker and Docker Compose (for database and other services)
 
-
-### Steps to Set Up the Project Locally
+## Installation
 
 1. Clone the repository:
    ```bash
    git clone https://github.com/korhy/cookbook.git
-    cd cookbook
-    ```
+   cd cookbook
+   ```
 
-2. Install dependencies using Composer:
+2. Install dependencies:
    ```bash
    composer install
    ```
+
 3. Configure your database connection in the `.env` file.
 
-4. Start the Symfony local server:
-   ```bash
-   symfony server:start
-   ```
-
-5. Start Docker services (Database, mailer, etc.):
+4. Start Docker services (database, mailer, etc.):
    ```bash
    docker-compose up -d
    ```
 
-6. Run database migrations to set up the schema:
+5. Run database migrations:
    ```bash
    php bin/console doctrine:migrations:migrate
    ```
 
-7. (Optional) Load initial data(Check data section for more info about the file format):
-    ```bash
-    php -d memory_limit=1024M bin/console app:import-csv path/to/your/csv/file.csv --batch-size=25
-    ```
+6. (Optional) Import initial data:
+   ```bash
+   php -d memory_limit=1024M bin/console app:import-csv --skip-header --batch-size=50
+   ```
 
-8. Create an admin user to access the admin panel:
+7. Create an admin user:
    ```bash
    symfony console security:hash-password
    ```
    Enter your desired password and copy the hashed output. Then run:
    ```bash
-   symfony run psql -c "INSERT INTO admin (id, username, roles, password) VALUES (nextval('admin_id_seq'), 'admin', '[\"ROLE_ADMIN\"]', 'your_hashed_password_here');" 
+   symfony run psql -c "INSERT INTO admin (id, username, roles, password) VALUES (nextval('admin_id_seq'), 'admin', '[\"ROLE_ADMIN\"]', 'your_hashed_password_here');"
    ```
 
-9. Access the application at `http://localhost:8000`.
+8. Access the application at `http://localhost:8000`.
+
+## API
+
+The application exposes a REST API built with [API Platform](https://api-platform.com/).
+
+- Documentation: `http://localhost:8000/api`
+- Authentication: JWT (Bearer token)
+
+### Get a token:
+```bash
+curl -X POST http://localhost:8000/api/login_check \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "your_password"}'
+```
+
+### Use the token:
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/recipes
+```
+
+## Data Import
+
+CSV files must be placed in `public/data/` with the following formats:
+
+| File | Format |
+|------|--------|
+| `recipe_categories.csv` | `name,id` |
+| `ingredients.csv` | `name,id` |
+| `recipes_final.csv` | `id,recipe_title,description,id_category` |
+| `recipe_ingredients.csv` | `id_recipe,quantity,id_unit,id_ingredient` |
+| `recipe_instructions.csv` | `id_recipe,content,position` |
+
+```bash
+php -d memory_limit=1024M bin/console app:import-csv [options]
+
+Options:
+  --skip-header       Skip the first row (header)
+  --batch-size=50     Number of records per batch (default: 50)
+  --dry-run           Preview import without saving
+  --delimiter=";"     CSV delimiter (default: ,)
+```
 
 ## Testing
 
@@ -70,11 +105,6 @@ A Symfony-based recipe management application that allows you to organize, brows
    php bin/console doctrine:migrations:migrate --env=test --no-interaction
    ```
 
-3. (Optional) Load initial data(Check data section for more info about the file format):
-    ```bash
-    php -d memory_limit=1024M bin/console --batch-size=25
-    ```
-
 ### Running Tests
 
 Run all tests:
@@ -82,12 +112,12 @@ Run all tests:
 php bin/phpunit
 ```
 
-Run tests for a specific class:
+Run a specific test:
 ```bash
 php bin/phpunit tests/Entity/RecipeTest.php
 ```
 
-Run tests with coverage (requires Xdebug):
+Run with coverage (requires Xdebug):
 ```bash
 php bin/phpunit --coverage-html var/coverage
 ```
@@ -98,17 +128,3 @@ The project includes:
 - **Unit tests**: Testing entities and services (e.g., `RecipeTest`, `SluggerServiceTest`)
 - **Functional tests**: Testing controllers and HTTP responses (e.g., `SecurityControllerTest`)
 - **Repository tests**: Testing database queries and data retrieval
-
-## Data Import
-You can import recipes in bulk using the CSV import command. The CSV file should have the following columns:
-
-- recipe_title
-- category
-- subcategory
-- description
-- ingredients
-- directions
-- num_ingredients
-- num_steps
-
-For my testing, I used a CSV file from [Kaggle - Recipe Ingredients and Reviews](https://www.kaggle.com/datasets/prashantsingh001/recipes-dataset-64k-dishes).
