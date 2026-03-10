@@ -1,0 +1,18 @@
+api_platform:
+    title: Cookbook API
+    description: Api for managing cookbook recipes
+    version: 1.0.0
+    formats:
+        json: ['application/json']
+        jsonopenapi: ['application/vnd.openapi+json']
+        html: ['text/html']
+    defaults:
+        stateless: true
+        pagination_items_per_page: 20
+        cache_headers:
+            vary: ['Content-Type', 'Authorization', 'Origin']
+    swagger:
+        api_keys:
+            JWT:
+                name: Authorization
+                type: header

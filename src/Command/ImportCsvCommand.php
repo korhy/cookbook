@@ -5,6 +5,7 @@ namespace App\Command;
 use App\Entity\Category;
 use App\Entity\Recipe;
 use App\Entity\Ingredient;
+use App\Entity\Instruction;
 use App\Entity\RecipeIngredient;
 use App\Service\SluggerService;
 use Doctrine\ORM\Id\AssignedGenerator;
@@ -13,11 +14,11 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Filesystem\Exception\IOException;
 
 #[AsCommand(
     name: 'app:import-csv',
@@ -27,7 +28,8 @@ class ImportCsvCommand extends Command
 {
     public function __construct(
         private EntityManagerInterface $entityManager,
-        private SluggerService $sluggerService
+        private SluggerService $sluggerService,
+        private LoggerInterface $logger
     ) {
         parent::__construct();
     }
@@ -39,16 +41,24 @@ class ImportCsvCommand extends Command
             ->addOption('batch-size', 'b', InputOption::VALUE_OPTIONAL, 'Number of records to process per batch', 50)
             ->addOption('skip-header', null, InputOption::VALUE_NONE, 'Skip the first row (header)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview import without saving to database')
-            ->setHelp(<<<'HELP'
-This command imports recipes from a CSV file.
+            ->setHelp(
+                <<<'HELP'
+This command imports recipes and related data from CSV files located in public/data/.
 
-Expected CSV format:
-title,slug,description,duration,category_name,category_slug,thumbnail
+Expected CSV files and formats:
+
+  recipe_categories.csv  →  name,id
+  ingredients.csv        →  name,id
+  recipes_final.csv      →  id,recipe_title,description,id_category
+  recipe_ingredients.csv →  id_recipe,quantity,id_unit,id_ingredient
+  recipe_instructions.csv →  id_recipe,content,position
 
 Example:
     php bin/console app:import-csv
     php bin/console app:import-csv --dry-run
+    php bin/console app:import-csv --skip-header
     php bin/console app:import-csv --batch-size=100
+    php bin/console app:import-csv --delimiter=";"
 HELP
             );
     }
@@ -61,7 +71,7 @@ HELP
             $this->disableAutoIncrement(Category::class);
             $this->disableAutoIncrement(Ingredient::class);
             $this->disableAutoIncrement(Recipe::class);
-        
+
             $delimiter = $input->getOption('delimiter');
             $batchSize = (int) $input->getOption('batch-size');
             $skipHeader = $input->getOption('skip-header');
@@ -84,7 +94,7 @@ HELP
 
             $categoryFile = fopen($categoryFilePath, 'r');
             if ($categoryFile === false) {
-                throw new \IOException('Unable to open the categories file');
+                throw new \RuntimeException('Unable to open the categories file');
             }
             if ($skipHeader) {
                 fgetcsv($categoryFile, 0, $delimiter);
@@ -134,7 +144,6 @@ HELP
 
                     $io->progressAdvance();
                     $totalCategories++;
-
                 } catch (\Exception $e) {
                     $io->warning(sprintf('Error processing category row: %s', $e->getMessage()));
                 }
@@ -209,8 +218,6 @@ HELP
                         $this->entityManager->flush();
                         $this->clearEntityManager();
                     }
-                    
-
                 } catch (\Exception $e) {
                     $io->warning(sprintf('Error processing ingredient row: %s', $e->getMessage()));
                 }
@@ -288,7 +295,6 @@ HELP
                         $this->entityManager->flush();
                         $this->clearEntityManager();
                     }
-
                 } catch (\Exception $e) {
                     $io->warning(sprintf('Error processing recipe row: %s', $e->getMessage()));
                 }
@@ -379,8 +385,82 @@ HELP
             $io->newLine();
             $io->success(sprintf('Imported %d recipe ingredients%s!', $totalRecipeIngredients, $dryRun ? ' (dry run)' : ''));
 
-            return Command::SUCCESS;
+            /**
+             * Import Recipe Instructions
+             */
+            $recipeInstructionsFilePath = __DIR__ . '/../../public/data/recipe_instructions.csv';
+            $this->validateFile($recipeInstructionsFilePath);
+            $io->title('CSV Import: Recipe Instructions');
+            $io->writeln(sprintf('File: %s', $recipeInstructionsFilePath));
+            $io->writeln(sprintf('Batch size: %d', $batchSize));
+            $io->newLine();
 
+            $totalRecipeInstructions = 0;
+            $recipeInstructionsFile = fopen($recipeInstructionsFilePath, 'r');
+            if ($recipeInstructionsFile === false) {
+                throw new \IOException('Unable to open the recipe instructions file');
+            }
+            if ($skipHeader) {
+                fgetcsv($recipeInstructionsFile, 0, $delimiter);
+            }
+
+            $io->section('Processing recipe instructions CSV...');
+            $io->progressStart();
+            $processedCount = 0;
+            while (($row = fgetcsv($recipeInstructionsFile, 0, $delimiter, '"', '\\')) !== false) {
+                try {
+                    // Expected format: id, content, position
+                    if (count($row) < 3) {
+                        $io->warning('Invalid row format in recipe instructions file (expected at least 3 columns)');
+                        continue;
+                    }
+                    [$idRecipe, $content, $position] = $row;
+
+                    // Validate required fields
+                    if (empty($idRecipe) || empty($content)) {
+                        $io->warning('Missing required fields in recipe instructions file (id_recipe or content)');
+                        continue;
+                    }
+
+                    // Create new recipe instruction
+                    $recipeInstruction = new Instruction();
+                    $recipeInstruction->setRecipe(
+                        $this->entityManager->getReference(Recipe::class, (int) $idRecipe)
+                    );
+                    $recipeInstruction->setContent(trim($content));
+                    $recipeInstruction->setPosition((int) $position);
+
+                    if (!$dryRun) {
+                        $this->entityManager->persist($recipeInstruction);
+                    }
+
+                    $processedCount++;
+                    $totalRecipeInstructions++;
+                    $io->progressAdvance();
+
+                    // Batch flush to optimize performance
+                    if ($processedCount % $batchSize === 0 && !$dryRun) {
+                        $this->entityManager->flush();
+                        $this->clearEntityManager();
+                    }
+                } catch (\Exception $e) {
+                    $io->warning(sprintf('Error processing recipe instruction row: %s', $e->getMessage()));
+                    // Log the error and continue processing
+                    $this->logger->error('Error processing recipe instruction row', ['exception' => $e, 'row' => $row]);
+                }
+            }
+            // Final flush for remaining recipe instructions
+            if ($processedCount % $batchSize !== 0 && !$dryRun) {
+                $this->entityManager->flush();
+            }
+            $this->entityManager->clear(); // Clear to free memory
+            fclose($recipeInstructionsFile);
+            $io->progressFinish();
+            $io->newLine();
+            $io->success(sprintf('Imported %d recipe instructions%s!', $totalRecipeInstructions, $dryRun ? ' (dry run)' : ''));
+
+
+            return Command::SUCCESS;
         } catch (\Exception $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
@@ -400,11 +480,9 @@ HELP
     }
 
     private function disableAutoIncrement(string $entityClass): void
-{
-    $metadata = $this->entityManager->getClassMetadata($entityClass);
-    $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
-    $metadata->setIdGenerator(new AssignedGenerator());
+    {
+        $metadata = $this->entityManager->getClassMetadata($entityClass);
+        $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
+        $metadata->setIdGenerator(new AssignedGenerator());
+    }
 }
-}
-
-
