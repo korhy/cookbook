@@ -38,7 +38,6 @@ jobs:
 
       - name: Setup test database
         run: |
-          php bin/console doctrine:schema:create --env=test
           php bin/console doctrine:migrations:migrate --env=test --no-interaction
         env:
           APP_ENV: test
