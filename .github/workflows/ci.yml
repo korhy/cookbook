@@ -11,6 +11,21 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: app_test
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U app -d app_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -37,14 +52,13 @@ jobs:
         run: vendor/bin/phpstan analyse
 
       - name: Setup test database
-        run: |
-          php bin/console doctrine:migrations:migrate --env=test --no-interaction
+        run: php bin/console doctrine:migrations:migrate --env=test --no-interaction
         env:
           APP_ENV: test
-          DATABASE_URL: "sqlite:///%kernel.project_dir%/var/test.db"
+          DATABASE_URL: "postgresql://app:app@127.0.0.1:5432/app_test?serverVersion=16&charset=utf8"
 
       - name: PHPUnit
         run: php bin/phpunit
         env:
           APP_ENV: test
-          DATABASE_URL: "sqlite:///%kernel.project_dir%/var/test.db"
+          DATABASE_URL: "postgresql://app:app@127.0.0.1:5432/app_test?serverVersion=16&charset=utf8"
