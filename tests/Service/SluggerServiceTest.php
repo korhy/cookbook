@@ -38,8 +38,8 @@ class SluggerServiceTest extends TestCase
     {
         $this->assertEquals($expected, $this->slugger->generateSlug($input));
     }
-    
-    static function slugProvider(): array
+
+    public static function slugProvider(): array
     {
         return [
             ['Pizza Margherita', 'pizza-margherita'],

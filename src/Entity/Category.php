@@ -10,7 +10,6 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
-
 #[ApiResource(
     normalizationContext: ['groups' => ['category:read']],
     denormalizationContext: ['groups' => ['category:write']],
@@ -118,7 +117,7 @@ class Category implements SluggableInterface
     }
 
     /**
-     * Used by the SluggableInterface
+     * Used by the SluggableInterface.
      */
     public function getTitle(): ?string
     {

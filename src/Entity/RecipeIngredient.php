@@ -80,6 +80,6 @@ class RecipeIngredient
 
     public function __toString(): string
     {
-        return $this->ingredient ?'id: ' . $this->ingredient->getId() . ' | name: ' . $this->ingredient->getName() . ' | quantity: ' . $this->quantity : '';
+        return $this->ingredient ? 'id: '.$this->ingredient->getId().' | name: '.$this->ingredient->getName().' | quantity: '.$this->quantity : '';
     }
 }

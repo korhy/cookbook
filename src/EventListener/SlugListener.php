@@ -9,8 +9,9 @@ use Doctrine\Persistence\Event\LifecycleEventArgs;
 class SlugListener
 {
     public function __construct(
-        private SluggerService $sluggerService
-    ) {}
+        private SluggerService $sluggerService,
+    ) {
+    }
 
     public function prePersist(LifecycleEventArgs $args): void
     {

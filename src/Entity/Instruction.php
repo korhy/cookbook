@@ -88,6 +88,6 @@ class Instruction
 
     public function __toString(): string
     {
-        return $this->content ? 'Position: ' . $this->position . ' | Content: ' . $this->content : '';
+        return $this->content ? 'Position: '.$this->position.' | Content: '.$this->content : '';
     }
 }

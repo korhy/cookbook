@@ -2,8 +2,8 @@
 
 namespace App\Tests\Repository;
 
-use App\Entity\Recipe;
 use App\Entity\Category;
+use App\Entity\Recipe;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 class RecipeRepositoryTest extends KernelTestCase
@@ -23,13 +23,13 @@ class RecipeRepositoryTest extends KernelTestCase
         $category = $this->entityManager
             ->getRepository(Category::class)
             ->findOneBy([]);
-        
-        if($category) {
+
+        if ($category) {
             $recipes = $this->entityManager
                 ->getRepository(Recipe::class)
                 ->findBy(['category' => $category]);
-            
-             $this->assertIsArray($recipes);
+
+            $this->assertIsArray($recipes);
 
             foreach ($recipes as $recipe) {
                 $this->assertSame($category, $recipe->getCategory());

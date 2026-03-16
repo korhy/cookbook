@@ -17,7 +17,7 @@ final class BanWord extends Constraint
         ?array $groups = null,
         mixed $payload = null,
         ?array $banWords = null,
-        ?string $message = null
+        ?string $message = null,
     ) {
         $this->banWords = $banWords ?? $this->banWords;
         $this->message = $message ?? $this->message;

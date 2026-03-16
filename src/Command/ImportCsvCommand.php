@@ -3,14 +3,14 @@
 namespace App\Command;
 
 use App\Entity\Category;
-use App\Entity\Recipe;
 use App\Entity\Ingredient;
 use App\Entity\Instruction;
+use App\Entity\Recipe;
 use App\Entity\RecipeIngredient;
 use App\Service\SluggerService;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -18,7 +18,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\Filesystem\Exception\IOException;
 
 #[AsCommand(
     name: 'app:import-csv',
@@ -29,7 +28,7 @@ class ImportCsvCommand extends Command
     public function __construct(
         private EntityManagerInterface $entityManager,
         private SluggerService $sluggerService,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
     ) {
         parent::__construct();
     }
@@ -82,10 +81,9 @@ HELP
             }
 
             /**
-             * Import Categories
+             * Import Categories.
              */
-
-            $categoryFilePath = __DIR__ . '/../../public/data/recipe_categories.csv';
+            $categoryFilePath = __DIR__.'/../../public/data/recipe_categories.csv';
             $this->validateFile($categoryFilePath);
 
             $io->title('CSV Import: Categories');
@@ -93,7 +91,7 @@ HELP
             $io->newLine();
 
             $categoryFile = fopen($categoryFilePath, 'r');
-            if ($categoryFile === false) {
+            if (false === $categoryFile) {
                 throw new \RuntimeException('Unable to open the categories file');
             }
             if ($skipHeader) {
@@ -120,7 +118,7 @@ HELP
                         continue;
                     }
 
-                    # Generate slug
+                    // Generate slug
                     $categorySlug = $this->sluggerService->generateSlug($name);
 
                     // Check if category already exists
@@ -143,7 +141,7 @@ HELP
                     }
 
                     $io->progressAdvance();
-                    $totalCategories++;
+                    ++$totalCategories;
                 } catch (\Exception $e) {
                     $io->warning(sprintf('Error processing category row: %s', $e->getMessage()));
                 }
@@ -162,9 +160,9 @@ HELP
             $io->success(sprintf('Imported %d categories%s!', $totalCategories, $dryRun ? ' (dry run)' : ''));
 
             /**
-             * Import Ingredients
+             * Import Ingredients.
              */
-            $ingredientsFilePath = __DIR__ . '/../../public/data/ingredients.csv';
+            $ingredientsFilePath = __DIR__.'/../../public/data/ingredients.csv';
             $this->validateFile($ingredientsFilePath);
             $io->title('CSV Import: Ingredients');
             $io->writeln(sprintf('File: %s', $ingredientsFilePath));
@@ -173,8 +171,8 @@ HELP
 
             $totalIngredients = 0;
             $ingredientsFile = fopen($ingredientsFilePath, 'r');
-            if ($ingredientsFile === false) {
-                throw new \IOException('Unable to open the ingredients file');
+            if (false === $ingredientsFile) {
+                throw new \Exception('Unable to open the ingredients file');
             }
             if ($skipHeader) {
                 fgetcsv($ingredientsFile, 0, $delimiter);
@@ -209,12 +207,12 @@ HELP
                         $this->entityManager->persist($ingredient);
                     }
 
-                    $processedCount++;
-                    $totalIngredients++;
+                    ++$processedCount;
+                    ++$totalIngredients;
                     $io->progressAdvance();
 
                     // Batch flush to optimize performance
-                    if ($processedCount % $batchSize === 0 && !$dryRun) {
+                    if (0 === $processedCount % $batchSize && !$dryRun) {
                         $this->entityManager->flush();
                         $this->clearEntityManager();
                     }
@@ -224,7 +222,7 @@ HELP
             }
 
             // Final flush for remaining ingredients
-            if ($processedCount % $batchSize !== 0 && !$dryRun) {
+            if (0 !== $processedCount % $batchSize && !$dryRun) {
                 $this->entityManager->flush();
             }
             $this->entityManager->clear(); // Clear to free memory
@@ -234,9 +232,9 @@ HELP
             $io->success(sprintf('Imported %d ingredients%s!', $totalIngredients, $dryRun ? ' (dry run)' : ''));
 
             /**
-             * Import Recipes
+             * Import Recipes.
              */
-            $recipeFilePath = __DIR__ . '/../../public/data/recipes_final.csv';
+            $recipeFilePath = __DIR__.'/../../public/data/recipes_final.csv';
             $this->validateFile($recipeFilePath);
             $io->title('CSV Import: Recipes');
             $io->writeln(sprintf('File: %s', $recipeFilePath));
@@ -245,8 +243,8 @@ HELP
 
             $totalRecipes = 0;
             $recipeFile = fopen($recipeFilePath, 'r');
-            if ($recipeFile === false) {
-                throw new \IOException('Unable to open the recipes file');
+            if (false === $recipeFile) {
+                throw new \Exception('Unable to open the recipes file');
             }
             if ($skipHeader) {
                 fgetcsv($recipeFile, 0, $delimiter);
@@ -286,12 +284,12 @@ HELP
                         $this->entityManager->persist($recipe);
                     }
 
-                    $processedCount++;
-                    $totalRecipes++;
+                    ++$processedCount;
+                    ++$totalRecipes;
                     $io->progressAdvance();
 
                     // Batch flush to optimize performance
-                    if ($processedCount % $batchSize === 0 && !$dryRun) {
+                    if (0 === $processedCount % $batchSize && !$dryRun) {
                         $this->entityManager->flush();
                         $this->clearEntityManager();
                     }
@@ -300,7 +298,7 @@ HELP
                 }
             }
             // Final flush for remaining recipes
-            if ($processedCount % $batchSize !== 0 && !$dryRun) {
+            if (0 !== $processedCount % $batchSize && !$dryRun) {
                 $this->entityManager->flush();
             }
             $this->entityManager->clear(); // Clear to free memory
@@ -310,9 +308,9 @@ HELP
             $io->success(sprintf('Imported %d recipes%s!', $totalRecipes, $dryRun ? ' (dry run)' : ''));
 
             /**
-             * Import Recipe Ingredients
+             * Import Recipe Ingredients.
              */
-            $recipeIngredientsFilePath = __DIR__ . '/../../public/data/recipe_ingredients.csv';
+            $recipeIngredientsFilePath = __DIR__.'/../../public/data/recipe_ingredients.csv';
             $this->validateFile($recipeIngredientsFilePath);
             $io->title('CSV Import: Recipe Ingredients');
             $io->writeln(sprintf('File: %s', $recipeIngredientsFilePath));
@@ -321,8 +319,8 @@ HELP
 
             $totalRecipeIngredients = 0;
             $recipeIngredientsFile = fopen($recipeIngredientsFilePath, 'r');
-            if ($recipeIngredientsFile === false) {
-                throw new \IOException('Unable to open the recipe ingredients file');
+            if (false === $recipeIngredientsFile) {
+                throw new \Exception('Unable to open the recipe ingredients file');
             }
             if ($skipHeader) {
                 fgetcsv($recipeIngredientsFile, 0, $delimiter);
@@ -360,12 +358,12 @@ HELP
                         $this->entityManager->persist($recipeIngredient);
                     }
 
-                    $processedCount++;
-                    $totalRecipeIngredients++;
+                    ++$processedCount;
+                    ++$totalRecipeIngredients;
                     $io->progressAdvance();
 
                     // Batch flush to optimize performance
-                    if ($processedCount % $batchSize === 0 && !$dryRun) {
+                    if (0 !== $processedCount % $batchSize && !$dryRun) {
                         $this->entityManager->flush();
                         $this->clearEntityManager();
                     }
@@ -376,7 +374,7 @@ HELP
                 }
             }
             // Final flush for remaining recipe ingredients
-            if ($processedCount % $batchSize !== 0 && !$dryRun) {
+            if (0 !== $processedCount % $batchSize && !$dryRun) {
                 $this->entityManager->flush();
             }
             $this->entityManager->clear(); // Clear to free memory
@@ -386,9 +384,9 @@ HELP
             $io->success(sprintf('Imported %d recipe ingredients%s!', $totalRecipeIngredients, $dryRun ? ' (dry run)' : ''));
 
             /**
-             * Import Recipe Instructions
+             * Import Recipe Instructions.
              */
-            $recipeInstructionsFilePath = __DIR__ . '/../../public/data/recipe_instructions.csv';
+            $recipeInstructionsFilePath = __DIR__.'/../../public/data/recipe_instructions.csv';
             $this->validateFile($recipeInstructionsFilePath);
             $io->title('CSV Import: Recipe Instructions');
             $io->writeln(sprintf('File: %s', $recipeInstructionsFilePath));
@@ -397,8 +395,8 @@ HELP
 
             $totalRecipeInstructions = 0;
             $recipeInstructionsFile = fopen($recipeInstructionsFilePath, 'r');
-            if ($recipeInstructionsFile === false) {
-                throw new \IOException('Unable to open the recipe instructions file');
+            if (false === $recipeInstructionsFile) {
+                throw new \Exception('Unable to open the recipe instructions file');
             }
             if ($skipHeader) {
                 fgetcsv($recipeInstructionsFile, 0, $delimiter);
@@ -434,12 +432,12 @@ HELP
                         $this->entityManager->persist($recipeInstruction);
                     }
 
-                    $processedCount++;
-                    $totalRecipeInstructions++;
+                    ++$processedCount;
+                    ++$totalRecipeInstructions;
                     $io->progressAdvance();
 
                     // Batch flush to optimize performance
-                    if ($processedCount % $batchSize === 0 && !$dryRun) {
+                    if (0 === $processedCount % $batchSize && !$dryRun) {
                         $this->entityManager->flush();
                         $this->clearEntityManager();
                     }
@@ -450,7 +448,7 @@ HELP
                 }
             }
             // Final flush for remaining recipe instructions
-            if ($processedCount % $batchSize !== 0 && !$dryRun) {
+            if (0 !== $processedCount % $batchSize && !$dryRun) {
                 $this->entityManager->flush();
             }
             $this->entityManager->clear(); // Clear to free memory
@@ -459,10 +457,10 @@ HELP
             $io->newLine();
             $io->success(sprintf('Imported %d recipe instructions%s!', $totalRecipeInstructions, $dryRun ? ' (dry run)' : ''));
 
-
             return Command::SUCCESS;
         } catch (\Exception $e) {
             $io->error($e->getMessage());
+
             return Command::FAILURE;
         }
     }
@@ -472,11 +470,10 @@ HELP
         return file_exists($filePath) && is_readable($filePath) ?: throw new \InvalidArgumentException(sprintf('File not found or not readable: %s', $filePath));
     }
 
-
     protected function clearEntityManager(): void
     {
         $this->entityManager->clear();
-        //gc_collect_cycles(); // Force garbage collection
+        // gc_collect_cycles(); // Force garbage collection
     }
 
     private function disableAutoIncrement(string $entityClass): void

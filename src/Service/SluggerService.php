@@ -9,6 +9,7 @@ class SluggerService
     public function generateSlug(string $text): string
     {
         $slugger = new AsciiSlugger();
+
         return strtolower($slugger->slug($text));
     }
 }

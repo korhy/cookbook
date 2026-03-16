@@ -2,8 +2,8 @@
 
 namespace App\Tests\Entity;
 
-use App\Entity\Recipe;
 use App\Entity\Category;
+use App\Entity\Recipe;
 use PHPUnit\Framework\TestCase;
 
 class RecipeTest extends TestCase

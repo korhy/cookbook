@@ -3,14 +3,13 @@
 namespace App\Form;
 
 use App\Entity\Category;
-Use App\Service\SluggerService;
+use App\Service\SluggerService;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Event\PreSubmitEvent;
 use Symfony\Component\Form\Extension\Core\Type\SubmitType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Form\FormEvents;
 use Symfony\Component\OptionsResolver\OptionsResolver;
-use Symfony\Component\String\Slugger\AsciiSlugger;
 
 class CategoryType extends AbstractType
 {
@@ -24,7 +23,7 @@ class CategoryType extends AbstractType
             ->add('name')
             ->add('slug')
             ->add('save', SubmitType::class, [
-                'label' => 'Save'
+                'label' => 'Save',
             ])
             ->addEventListener(FormEvents::PRE_SUBMIT, $this->autoSlug(...))
         ;
@@ -34,7 +33,7 @@ class CategoryType extends AbstractType
     {
         $data = $event->getData();
 
-        if(empty($data['slug'])) {
+        if (empty($data['slug'])) {
             // Call the slugger service to generate a slug from the name
             $slugger = $this->sluggerService;
             $data['slug'] = $slugger->generateSlug($data['name']);

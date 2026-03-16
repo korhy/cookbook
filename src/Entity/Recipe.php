@@ -228,8 +228,6 @@ class Recipe implements SluggableInterface
      * bundle's configuration parameter 'inject_on_load' is set to 'true' this setter
      * must be able to accept an instance of 'File' as the bundle will inject one here
      * during Doctrine hydration.
-     *
-     * @param File|\Symfony\Component\HttpFoundation\File\UploadedFile|null $thumbnailFile
      */
     public function setThumbnailFile(?File $file = null): void
     {

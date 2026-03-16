@@ -21,7 +21,7 @@ class RecipeNormalizer implements NormalizerInterface
         $context[self::class] = true;
         $data = $this->normalizer->normalize($object, $format, $context);
 
-        if (is_array($data) && $object->getThumbnail() !== null) {
+        if (is_array($data) && null !== $object->getThumbnail()) {
             $data['thumbnail'] = $this->storage->resolveUri($object, 'thumbnailFile');
         }
 

@@ -34,14 +34,14 @@ class RecipeRepository extends ServiceEntityRepository
     {
         return $this->createQueryBuilder('r')
             ->andWhere('r.duration <= :duration')
-            ->setParameter('duration')
+            ->setParameter('duration', $duration)
             ->orderBy('r.duration', 'ASC')
             ->getQuery()
             ->getResult();
     }
 
     /**
-     * Base query builder for recipes with category joined
+     * Base query builder for recipes with category joined.
      */
     public function getRecipesWithCategoryQueryBuilder(): QueryBuilder
     {
