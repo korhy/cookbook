@@ -4,12 +4,10 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    tags:
-      - 'v*.*.*'
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -22,7 +20,7 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             git fetch --tags
-            git checkout ${{ github.event.workflow_run.head_branch }}
+            git checkout --detach ${{ github.event.workflow_run.head_sha }}
             APP_ENV=prod php composer.phar install --no-dev --optimize-autoloader
             APP_ENV=prod php bin/console doctrine:migrations:migrate --no-interaction
             APP_ENV=prod php bin/console assets:install
