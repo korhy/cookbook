@@ -36,7 +36,7 @@ jobs:
       - name: PHPStan
         run: vendor/bin/phpstan analyse
 
-            - name: Setup test database
+      - name: Setup test database
         run: |
           php bin/console doctrine:schema:create --env=test
           php bin/console doctrine:migrations:migrate --env=test --no-interaction
