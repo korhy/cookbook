@@ -1,3 +1,6 @@
+![CI](https://github.com/korhy/cookbook/actions/workflows/ci.yml/badge.svg)
+![Deploy](https://github.com/korhy/cookbook/actions/workflows/deploy.yml/badge.svg)
+
 # cookbook
 
 ## Description

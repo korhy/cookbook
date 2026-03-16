@@ -1,0 +1,31 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch --tags
+            git checkout ${{ github.event.workflow_run.head_branch }}
+            APP_ENV=prod php composer.phar install --no-dev --optimize-autoloader
+            APP_ENV=prod php bin/console doctrine:migrations:migrate --no-interaction
+            APP_ENV=prod php bin/console assets:install
+            APP_ENV=prod php bin/console asset-map:compile
+            APP_ENV=prod php bin/console cache:clear
+            APP_ENV=prod php bin/console cache:warmup
