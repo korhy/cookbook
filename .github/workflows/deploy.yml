@@ -19,8 +19,9 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
-            git fetch --tags
-            git checkout --detach ${{ github.event.workflow_run.head_sha }}
+            git fetch origin main
+            git checkout main
+            git pull origin main
             APP_ENV=prod php composer.phar install --no-dev --optimize-autoloader
             APP_ENV=prod php bin/console doctrine:migrations:migrate --no-interaction
             APP_ENV=prod php bin/console assets:install
