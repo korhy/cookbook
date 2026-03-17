@@ -24,10 +24,10 @@ class RecipeNormalizer implements NormalizerInterface
         $data = $this->normalizer->normalize($object, $format, $context);
 
         if (is_array($data)) {
-            if ($object->getThumbnail() !== null) {
+            if (null !== $object->getThumbnail()) {
                 $request = $this->requestStack->getCurrentRequest();
                 $baseUrl = $request ? $request->getSchemeAndHttpHost() : '';
-                $data['thumbnail'] = $baseUrl . $this->storage->resolveUri($object, 'thumbnailFile');
+                $data['thumbnail'] = $baseUrl.$this->storage->resolveUri($object, 'thumbnailFile');
             } else {
                 $data['thumbnail'] = null;
             }
