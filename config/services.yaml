@@ -29,3 +29,8 @@ services:
               event: 'prePersist'
             - name: 'doctrine.event_listener'
               event: 'preUpdate'
+    App\EventListener\LocaleListener:
+        tags:
+            - name: 'kernel.event_listener'
+              event: 'kernel.request'
+              priority: 20
