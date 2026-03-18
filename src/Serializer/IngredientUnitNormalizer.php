@@ -3,12 +3,14 @@
 namespace App\Serializer;
 
 use App\Enum\IngredientUnit;
-use Symfony\Contracts\Translation\TranslatorInterface;
 use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class IngredientUnitNormalizer implements NormalizerInterface
 {
-    public function __construct(private TranslatorInterface $translator) {}
+    public function __construct(private TranslatorInterface $translator)
+    {
+    }
 
     public function normalize(mixed $object, ?string $format = null, array $context = []): string
     {
