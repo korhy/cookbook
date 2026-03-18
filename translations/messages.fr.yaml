@@ -1,0 +1,12 @@
+ingredient_unit:
+        g: "g"
+        kg: "kg"
+        ml: "ml"
+        cl: "cl"
+        L: "L"
+        tsp: "Cuillère à café"
+        tbsp: "Cuillère à soupe"
+        cup: "Tasse"
+        unit: "unité"
+        pinch: "pincée"
+        slice: "tranche"

@@ -4,6 +4,7 @@ namespace App\Entity;
 
 use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
+use App\Enum\IngredientUnit;
 use App\Repository\RecipeIngredientRepository;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -25,6 +26,11 @@ class RecipeIngredient
     #[Groups(['recipe_ingredient:read', 'recipe_ingredient:write', 'recipe:read', 'recipe:write'])]
     #[ApiProperty(example: 2)]
     private ?float $quantity = null;
+
+    #[ORM\Column(type: 'string', enumType: IngredientUnit::class, nullable: true)]
+    #[Groups(['recipe_ingredient:read', 'recipe_ingredient:write', 'recipe:read', 'recipe:write'])]
+    #[ApiProperty(example: 'g')]
+    private ?IngredientUnit $unit = null;
 
     #[ORM\ManyToOne(inversedBy: 'recipeIngredients')]
     #[ORM\JoinColumn(nullable: false)]
@@ -78,8 +84,20 @@ class RecipeIngredient
         return $this;
     }
 
+    public function getUnit(): ?IngredientUnit
+    {
+        return $this->unit;
+    }
+
+    public function setUnit(?IngredientUnit $unit): static
+    {
+        $this->unit = $unit;
+
+        return $this;
+    }
+
     public function __toString(): string
     {
-        return $this->ingredient ? 'id: '.$this->ingredient->getId().' | name: '.$this->ingredient->getName().' | quantity: '.$this->quantity : '';
+        return $this->ingredient ? 'id: '.$this->ingredient->getId().' | name: '.$this->ingredient->getName().' | quantity: '.$this->quantity.' | unit: '.$this->unit?->label() : '';
     }
 }

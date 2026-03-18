@@ -27,10 +27,6 @@ class Ingredient
     #[Groups(['ingredient:read', 'ingredient:write', 'recipe:read'])]
     private ?string $name = null;
 
-    #[ORM\Column(length: 255, nullable: true)]
-    #[Groups(['ingredient:read', 'ingredient:write', 'recipe:read'])]
-    private ?string $unit = null;
-
     #[ORM\Column]
     private ?\DateTimeImmutable $createdAt = null;
 
@@ -68,18 +64,6 @@ class Ingredient
     public function setName(string $name): static
     {
         $this->name = $name;
-
-        return $this;
-    }
-
-    public function getUnit(): ?string
-    {
-        return $this->unit;
-    }
-
-    public function setUnit(?string $unit): static
-    {
-        $this->unit = $unit;
 
         return $this;
     }

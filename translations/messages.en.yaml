@@ -1,0 +1,12 @@
+ingredient_unit:
+        g: "g"
+        kg: "kg"
+        ml: "ml"
+        cl: "cl"
+        L: "L"
+        tsp: "Teaspoon"
+        tbsp: "Tablespoon"
+        cup: "Cup"
+        unit: "unit"
+        pinch: "Pinch"
+        slice: "Slice"
