@@ -3,7 +3,7 @@ services:
 ###> doctrine/doctrine-bundle ###
   database:
     ports:
-      - "5433:5432"
+      - "5434:5432"
 ###< doctrine/doctrine-bundle ###
 
 ###> symfony/mailer ###

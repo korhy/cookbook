@@ -51,6 +51,18 @@ class RecipeRepository extends ServiceEntityRepository
             ->orderBy('r.id', 'DESC');
     }
 
+    public function searchByKeywords(string $keywords): array
+    {
+        return $this->createQueryBuilder('r')
+            ->leftJoin('r.category', 'c')
+            ->where('r.title LIKE :keywords OR r.description LIKE :keywords OR c.name LIKE :keywords')
+            ->setParameter('keywords', '%' . $keywords . '%')
+            ->orderBy('r.id', 'DESC')
+            ->setMaxResults(5)
+            ->getQuery()
+            ->getResult();
+    }
+
     //    /**
     //     * @return Recipe[] Returns an array of Recipe objects
     //     */

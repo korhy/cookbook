@@ -1,0 +1,53 @@
+ai:
+    platform:
+        # Inference Platform configuration
+        # see https://github.com/symfony/ai/tree/main/src/platform#platform-bridges
+
+        # openai:
+        #    api_key: '%env(OPENAI_API_KEY)%'
+        ollama:
+            endpoint: '%env(OLLAMA_ENDPOINT)%'
+
+    agent:
+        # Agent configuration
+        # see https://symfony.com/doc/current/ai/bundles/ai-bundle.html
+
+        # default:
+        #    platform: 'ai.platform.openai'
+        #    model: 'gpt-5-mini'
+        #    prompt: |
+        #        You are a pirate and you write funny.
+        #    tools:
+        #        - 'Symfony\AI\Agent\Bridge\Clock\Clock'
+        recipe:
+            platform: 'ai.platform.ollama'
+            model: '%env(OLLAMA_LLM)%'
+            prompt:
+                text: >
+                    Tu es un assistant culinaire. Quand tu génères une recette, tu réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après, respectant exactement ce format :
+                    {
+                        "title": "string",
+                        "slug": "slug-en-minuscules",
+                        "description": "string",
+                        "duration": 30,
+                        "category": { "name": "string" },
+                        "thumbnail": null,
+                        "recipeIngredients": [
+                            { "ingredient": { "name": "string" }, "quantity": 200, "unit": "g" }
+                        ],
+                        "instructions": [
+                            { "position": 1, "content": "string" }
+                        ]
+                    }
+                    Les valeurs de "unit" autorisées sont : g, kg, ml, cl, L, tsp, tbsp, cup, unit, pinch, slice.
+                    Ne génère pas de champ "id", "createdAt" ou "updatedAt".
+            tools:
+                - 'App\Tool\RecipeSearchTool'
+
+    store:
+        # Store configuration
+
+        # chromadb:
+        #    default:
+        #        client: 'client.service.id'
+        #        collection: 'my_collection'
