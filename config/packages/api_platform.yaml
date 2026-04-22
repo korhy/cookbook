@@ -9,6 +9,9 @@ api_platform:
         html: ['text/html']
     defaults:
         stateless: true
+        operations:
+            - ApiPlatform\Metadata\GetCollection
+            - ApiPlatform\Metadata\Get
         pagination_items_per_page: 20
         normalization_context:
             skip_null_values: false
