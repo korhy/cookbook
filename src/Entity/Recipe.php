@@ -2,8 +2,14 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Doctrine\Orm\Filter\IriFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
 use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\QueryParameter;
+use App\Filter\IngredientFilter;
 use App\Repository\RecipeRepository;
 use App\Validator\BanWord;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -28,6 +34,18 @@ use Vich\UploaderBundle\Mapping\Attribute as Vich;
     paginationMaximumItemsPerPage: 50,
     paginationClientItemsPerPage: true,
     paginationClientEnabled: true,
+    operations: [
+        new GetCollection(
+            parameters: [
+                'category' => new QueryParameter(property: 'category', filter: new IriFilter()),
+                'ingredient' => new QueryParameter(filter: new IngredientFilter()),
+                'order[title]' => new QueryParameter(property: 'title', filter: new OrderFilter()),
+                'order[duration]' => new QueryParameter(property: 'duration', filter: new OrderFilter()),
+                'order[createdAt]' => new QueryParameter(property: 'createdAt', filter: new OrderFilter()),
+            ],
+        ),
+        new Get(),
+    ],
 )]
 class Recipe implements SluggableInterface
 {
