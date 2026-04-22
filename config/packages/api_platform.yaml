@@ -3,6 +3,7 @@ api_platform:
     description: Api for managing cookbook recipes
     version: 1.0.0
     formats:
+        jsonld: ['application/ld+json']
         json: ['application/json']
         jsonopenapi: ['application/vnd.openapi+json']
         html: ['text/html']

@@ -23,6 +23,11 @@ use Vich\UploaderBundle\Mapping\Attribute as Vich;
 #[ApiResource(
     normalizationContext: ['groups' => ['recipe:read']],
     denormalizationContext: ['groups' => ['recipe:write']],
+    paginationEnabled: true,
+    paginationItemsPerPage: 10,
+    paginationMaximumItemsPerPage: 50,
+    paginationClientItemsPerPage: true,
+    paginationClientEnabled: true,
 )]
 class Recipe implements SluggableInterface
 {
