@@ -50,6 +50,12 @@ jobs:
       - name: PHPStan
         run: vendor/bin/phpstan analyse
 
+      - name: Generate JWT keys
+        run: php bin/console lexik:jwt:generate-keypair --overwrite
+        env:
+          APP_ENV: test
+          JWT_PASSPHRASE: test
+
       - name: Setup test database
         run: php bin/console doctrine:migrations:migrate --env=test --no-interaction
         env:
@@ -61,3 +67,4 @@ jobs:
         env:
           APP_ENV: test
           DATABASE_URL: "postgresql://app:app@127.0.0.1:5432/app?serverVersion=16&charset=utf8"
+          JWT_PASSPHRASE: test
