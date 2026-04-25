@@ -10,6 +10,7 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\QueryParameter;
 use App\Filter\IngredientFilter;
+use App\Filter\TitleFilter;
 use App\Repository\RecipeRepository;
 use App\Validator\BanWord;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -37,6 +38,7 @@ use Vich\UploaderBundle\Mapping\Attribute as Vich;
     operations: [
         new GetCollection(
             parameters: [
+                'title' => new QueryParameter(filter: new TitleFilter()),
                 'category' => new QueryParameter(property: 'category', filter: new IriFilter()),
                 'ingredient' => new QueryParameter(filter: new IngredientFilter()),
                 'order[slug]' => new QueryParameter(property: 'slug', filter: new OrderFilter()),
