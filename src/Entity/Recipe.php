@@ -39,7 +39,7 @@ use Vich\UploaderBundle\Mapping\Attribute as Vich;
             parameters: [
                 'category' => new QueryParameter(property: 'category', filter: new IriFilter()),
                 'ingredient' => new QueryParameter(filter: new IngredientFilter()),
-                'order[title]' => new QueryParameter(property: 'title', filter: new OrderFilter()),
+                'order[slug]' => new QueryParameter(property: 'slug', filter: new OrderFilter()),
                 'order[duration]' => new QueryParameter(property: 'duration', filter: new OrderFilter()),
                 'order[createdAt]' => new QueryParameter(property: 'createdAt', filter: new OrderFilter()),
             ],
