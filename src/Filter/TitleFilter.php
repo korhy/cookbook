@@ -21,7 +21,7 @@ final class TitleFilter implements FilterInterface
 
         $queryBuilder
             ->andWhere(\sprintf('LOWER(%s.title) LIKE LOWER(:%s)', $alias, $paramName))
-            ->setParameter($paramName, '%' . $value . '%');
+            ->setParameter($paramName, '%'.$value.'%');
     }
 
     public function getDescription(string $resourceClass): array
