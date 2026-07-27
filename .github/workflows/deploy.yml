@@ -21,6 +21,7 @@ jobs:
             cd ${{ secrets.DEPLOY_PATH }}
             git fetch origin main
             git checkout main
+            git checkout -- config/reference.php
             git pull origin main
             APP_ENV=prod php composer.phar install --no-dev --optimize-autoloader
             APP_ENV=prod php bin/console doctrine:migrations:migrate --no-interaction
