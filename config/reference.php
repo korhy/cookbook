@@ -1916,6 +1916,37 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
  *         skip_same_as_origin?: bool,
  *     }>,
  * }
+ * @psalm-type McpConfig = array{
+ *     app?: scalar|null, // Default: "app"
+ *     version?: scalar|null, // Default: "0.0.1"
+ *     description?: scalar|null, // Default: null
+ *     icons?: list<array{ // Default: []
+ *         src: scalar|null,
+ *         mime_type?: scalar|null, // Default: null
+ *         sizes?: list<scalar|null>,
+ *     }>,
+ *     website_url?: scalar|null, // Default: null
+ *     pagination_limit?: int, // Default: 50
+ *     instructions?: scalar|null, // Default: null
+ *     client_transports?: array{
+ *         stdio?: bool, // Default: false
+ *         http?: bool, // Default: false
+ *     },
+ *     apps?: array{ // MCP Apps support (interactive HTML UI resources). Apps are registered with the #[AsMcpApp] attribute.
+ *         enabled?: bool|null, // Default: null
+ *     },
+ *     http?: array{
+ *         path?: scalar|null, // Default: "/_mcp"
+ *         allowed_hosts?: mixed, // DNS rebinding protection hosts (without port). Leave unset to keep the SDK default (localhost only), set an array of hostnames to expose a public MCP server, or false to disable the protection entirely. // Default: null
+ *         session?: array{
+ *             store?: "file"|"memory"|"cache"|"framework", // Default: "file"
+ *             directory?: scalar|null, // Default: "%kernel.cache_dir%/mcp-sessions"
+ *             cache_pool?: scalar|null, // Default: "cache.mcp.sessions"
+ *             prefix?: scalar|null, // Default: "mcp-"
+ *             ttl?: int, // Default: 3600
+ *         },
+ *     },
+ * }
  * @psalm-type ConfigType = array{
  *     imports?: ImportsConfig,
  *     parameters?: ParametersConfig,
@@ -1936,6 +1967,7 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
  *     api_platform?: ApiPlatformConfig,
  *     lexik_jwt_authentication?: LexikJwtAuthenticationConfig,
  *     nelmio_cors?: NelmioCorsConfig,
+ *     mcp?: McpConfig,
  *     "when@dev"?: array{
  *         imports?: ImportsConfig,
  *         parameters?: ParametersConfig,
@@ -1959,6 +1991,7 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
  *         api_platform?: ApiPlatformConfig,
  *         lexik_jwt_authentication?: LexikJwtAuthenticationConfig,
  *         nelmio_cors?: NelmioCorsConfig,
+ *         mcp?: McpConfig,
  *     },
  *     "when@prod"?: array{
  *         imports?: ImportsConfig,
@@ -1980,6 +2013,7 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
  *         api_platform?: ApiPlatformConfig,
  *         lexik_jwt_authentication?: LexikJwtAuthenticationConfig,
  *         nelmio_cors?: NelmioCorsConfig,
+ *         mcp?: McpConfig,
  *     },
  *     "when@test"?: array{
  *         imports?: ImportsConfig,
@@ -2002,6 +2036,7 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
  *         api_platform?: ApiPlatformConfig,
  *         lexik_jwt_authentication?: LexikJwtAuthenticationConfig,
  *         nelmio_cors?: NelmioCorsConfig,
+ *         mcp?: McpConfig,
  *     },
  *     ...<string, ExtensionType|array{ // extra keys must follow the when@%env% pattern or match an extension alias
  *         imports?: ImportsConfig,

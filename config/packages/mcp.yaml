@@ -1,0 +1,26 @@
+mcp:
+    app: 'cookbook'
+    version: '1.0.0'
+    description: 'Public read-only MCP server exposing recipe and category search for the Cookbook API.'
+
+    client_transports:
+        stdio: true
+        http: true
+
+    http:
+        path: /mcp
+        allowed_hosts: ['api.clementboudinel.fr']
+        session:
+            store: file
+            directory: '%kernel.cache_dir%/mcp-sessions'
+            ttl: 3600
+
+when@dev:
+    mcp:
+        http:
+            allowed_hosts: ['localhost', '127.0.0.1']
+
+when@test:
+    mcp:
+        http:
+            allowed_hosts: ['localhost', '127.0.0.1']
