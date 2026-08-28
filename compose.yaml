@@ -1,5 +1,54 @@
-
+# Local development stack — `make up` starts the whole project.
+# Production is NOT built from this file: cookbook is deployed to OVH mutualisé
+# over SSH by .github/workflows/deploy.yml. See DEPLOY.md.
 services:
+  # ─── FrankenPHP (PHP 8.4 + Caddy) — the Cookbook API ────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/frankenphp/Dockerfile
+    container_name: cookbook_app
+    restart: unless-stopped
+    # Port 8001 is historical: it is the address the local tooling has always used.
+    # Bound to 127.0.0.1 — nothing is exposed on the LAN.
+    ports:
+      - "127.0.0.1:8001:80"
+    volumes:
+      - ./:/app
+      - ./docker/frankenphp/Caddyfile:/etc/frankenphp/Caddyfile:ro
+    environment:
+      APP_ENV: dev
+      APP_DEBUG: "1"
+      # Consumed by dev-entrypoint.sh to wait for the database.
+      DB_HOST: database
+      DB_PORT: "5432"
+      # Fixed (not ${...}): the app talks to the `database` service. Compose auto-reads
+      # Symfony's host-oriented .env / .env.local (127.0.0.1:5435) for interpolation, so
+      # we must not interpolate DATABASE_URL here or the container would inherit
+      # 127.0.0.1 and fail to reach the database.
+      DATABASE_URL: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16&charset=utf8"
+      # Same reasoning: the container reaches Mailpit by service name, not via the host.
+      MAILER_DSN: "smtp://mailer:1025"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - default
+      - korhy_net
+
+  # ─── Adminer — lightweight database web UI ──────────────────────────────────
+  # Replaces the git-ignored public/adminer.php: no admin tool sitting in the docroot.
+  adminer:
+    image: adminer:latest
+    container_name: cookbook_adminer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8083:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: database
+    depends_on:
+      - database
+
 ###> doctrine/doctrine-bundle ###
   database:
     image: postgres:${POSTGRES_VERSION:-16}-alpine
@@ -23,3 +72,11 @@ volumes:
 ###> doctrine/doctrine-bundle ###
   database_data:
 ###< doctrine/doctrine-bundle ###
+
+networks:
+  # Shared with the Radiant stack so its container can reach this API at
+  # http://cookbook_app. `make net` (a prerequisite of `make up`) creates it.
+  # External on purpose: it outlives `make down` on either side, and neither stack
+  # has to be running for the other to start.
+  korhy_net:
+    external: true

@@ -1,0 +1,25 @@
+# FrankenPHP Caddyfile — LOCAL DEVELOPMENT only.
+# Mounted into the container at /etc/frankenphp/Caddyfile by compose.yaml.
+{
+	# Enable the FrankenPHP module.
+	frankenphp
+
+	# PHP is handled before static file serving.
+	order php_server before file_server
+
+	# Plain HTTP on :80 in development — no automatic HTTPS.
+	auto_https off
+
+	# Verbose logging while developing.
+	debug
+}
+
+:80 {
+	# Symfony front controller lives in public/.
+	root * /app/public
+
+	encode zstd gzip
+
+	# Every non-file request is routed to public/index.php.
+	php_server
+}

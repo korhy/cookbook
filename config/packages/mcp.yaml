@@ -18,7 +18,9 @@ mcp:
 when@dev:
     mcp:
         http:
-            allowed_hosts: ['localhost', '127.0.0.1']
+            # cookbook_app: the container's own name on the shared `korhy_net` network, so a
+            # containerised client (Radiant, another stack) is not rejected on the Host header.
+            allowed_hosts: ['localhost', '127.0.0.1', 'cookbook_app']
 
 when@test:
     mcp:
