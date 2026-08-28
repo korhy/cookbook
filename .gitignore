@@ -76,6 +76,9 @@ Thumbs.db
 supervisord.pid
 supervisord.log
 
+# Per-developer Docker overrides (ports, project name) — never shared
+/compose.local.yaml
+
 # Apache
 /.htaccess
 /public/.htaccess
@@ -100,3 +103,12 @@ phpstan.neon
 /.php-cs-fixer.php
 /.php-cs-fixer.cache
 ###< friendsofphp/php-cs-fixer ###
+
+###> claude code ###
+# The global core.excludesFile (/Users/clement/code/.gitignore) ignores /.claude.
+# The workspace (CLAUDE.md rules & skills) is versioned on purpose — re-include it,
+# then re-ignore the machine-local and generated bits.
+!/.claude/
+/.claude/settings.local.json
+/.claude/scheduled_tasks.lock
+###< claude code ###

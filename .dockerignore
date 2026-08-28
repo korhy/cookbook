@@ -1,0 +1,16 @@
+# Keeps the build context small for `docker compose build`.
+# The dev image only COPYs docker/frankenphp/dev-entrypoint.sh; everything else is
+# bind-mounted at runtime, so vendor/ and the caches never need to be in the context.
+# Do NOT exclude docker/ — the Dockerfile copies the entrypoint from there.
+.git
+.github
+.idea
+.vscode
+vendor
+var/cache
+var/log
+var/sessions
+public/data
+public/images
+config/jwt
+*.pdf
