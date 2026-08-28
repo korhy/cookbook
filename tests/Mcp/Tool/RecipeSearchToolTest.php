@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Tests\Mcp\Tool;
 
 use App\Entity\Category;
 use App\Entity\Recipe;
+use App\Enum\RecipeStatus;
 use App\Mcp\Tool\RecipeSearchTool;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -14,6 +17,7 @@ class RecipeSearchToolTest extends KernelTestCase
     private RecipeSearchTool $tool;
     private Category $category;
     private Recipe $recipe;
+    private Recipe $draft;
 
     protected function setUp(): void
     {
@@ -32,6 +36,14 @@ class RecipeSearchToolTest extends KernelTestCase
             ->setCategory($this->category);
         $this->em->persist($this->recipe);
 
+        $this->draft = new Recipe();
+        $this->draft->setTitle('Chocolate draft test '.uniqid())
+            ->setDescription('A draft chocolate cake awaiting review.')
+            ->setDuration(45)
+            ->setCategory($this->category)
+            ->setStatus(RecipeStatus::Draft);
+        $this->em->persist($this->draft);
+
         $this->em->flush();
     }
 
@@ -47,6 +59,14 @@ class RecipeSearchToolTest extends KernelTestCase
         }
     }
 
+    public function testSearchExcludesDrafts(): void
+    {
+        $slugs = array_column(($this->tool)('chocolate')['recipes'], 'slug');
+
+        $this->assertContains($this->recipe->getSlug(), $slugs);
+        $this->assertNotContains($this->draft->getSlug(), $slugs);
+    }
+
     public function testSearchReturnsEmptyArrayWhenNoMatch(): void
     {
         $this->assertSame(['recipes' => []], ($this->tool)('zzz_no_such_keyword_zzz'));
@@ -55,6 +75,7 @@ class RecipeSearchToolTest extends KernelTestCase
     protected function tearDown(): void
     {
         $this->em->remove($this->recipe);
+        $this->em->remove($this->draft);
         $this->em->remove($this->category);
         $this->em->flush();
         parent::tearDown();

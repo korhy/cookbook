@@ -10,3 +10,6 @@ ingredient_unit:
         unit: "unité"
         pinch: "pincée"
         slice: "tranche"
+recipe_status:
+        draft: "Brouillon"
+        published: "Publiée"

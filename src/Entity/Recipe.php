@@ -9,6 +9,7 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\QueryParameter;
+use App\Enum\RecipeStatus;
 use App\Filter\IngredientFilter;
 use App\Filter\TitleFilter;
 use App\Repository\RecipeRepository;
@@ -89,6 +90,15 @@ class Recipe implements SluggableInterface
     #[Assert\Positive]
     #[Groups(['recipe:read', 'recipe:write'])]
     private ?int $duration = null;
+
+    /**
+     * Recipes authored through a trusted path (EasyAdmin, the CSV import) are published
+     * outright. Only the MCP write tools create drafts, which stay out of the public API
+     * until an administrator publishes them.
+     */
+    #[ORM\Column(type: 'string', enumType: RecipeStatus::class, options: ['default' => 'published'])]
+    #[Groups(['recipe:read'])]
+    private RecipeStatus $status = RecipeStatus::Published;
 
     #[ORM\ManyToOne(inversedBy: 'recipes')]
     #[Groups(['recipe:read', 'recipe:write'])]
@@ -204,6 +214,23 @@ class Recipe implements SluggableInterface
         $this->duration = $duration;
 
         return $this;
+    }
+
+    public function getStatus(): RecipeStatus
+    {
+        return $this->status;
+    }
+
+    public function setStatus(RecipeStatus $status): static
+    {
+        $this->status = $status;
+
+        return $this;
+    }
+
+    public function isPublished(): bool
+    {
+        return RecipeStatus::Published === $this->status;
     }
 
     public function getCategory(): ?Category

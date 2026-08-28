@@ -18,9 +18,13 @@ surface is treated as a contract rather than an implementation detail.
   carrying a quantity and a unit through a dedicated join entity.
 - **Read API** (`/api/v1`) — JSON-LD, JWT-authenticated, paginated, with filtering on title,
   category and ingredient, and sorting on slug, duration and creation date.
-- **MCP server** (`/api/v1/mcp`) — public, read-only tools (`recipe_search`, `recipe_get`,
-  `category_list`) so an AI client can query the catalogue.
-- **Back-office** (`/admin`) — EasyAdmin 4, the only way content is edited.
+- **MCP server** (`/api/v1/mcp`) — public read tools (`recipe_search`, `recipe_get`,
+  `category_list`, `ingredient_search`) so an AI client can query the catalogue, plus two
+  **token-gated** tools (`recipe_create`, `recipe_import_from_url`). Writes land as unpublished
+  **drafts** and stay invisible to the API until approved in the back-office; with no token
+  configured they refuse every call, which is the default.
+- **Back-office** (`/admin`) — EasyAdmin 4, where all content is edited and where MCP-submitted
+  drafts are reviewed and published.
 - **CSV import** — `app:import-csv` bulk-loads a whole recipe catalogue.
 
 ## API
@@ -227,7 +231,7 @@ the cache. The full procedure and the OVH-specific traps are in **[DEPLOY.md](DE
 │   ├── EventListener/  # SlugListener, LocaleListener
 │   ├── Filter/         # custom API Platform filters
 │   ├── Form/           # form types used by EasyAdmin
-│   ├── Mcp/Tool/       # MCP tools — read-only
+│   ├── Mcp/Tool/       # MCP tools — read tools + the token-gated write tools
 │   ├── Repository/     # every Doctrine query lives here
 │   ├── Serializer/     # custom normalizers
 │   ├── Service/        # business logic

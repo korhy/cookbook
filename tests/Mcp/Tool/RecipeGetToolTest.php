@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Tests\Mcp\Tool;
 
 use App\Entity\Category;
@@ -8,6 +10,7 @@ use App\Entity\Instruction;
 use App\Entity\Recipe;
 use App\Entity\RecipeIngredient;
 use App\Enum\IngredientUnit;
+use App\Enum\RecipeStatus;
 use App\Mcp\Tool\RecipeGetTool;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -20,6 +23,8 @@ class RecipeGetToolTest extends KernelTestCase
     private Category $category;
     private Ingredient $ingredient;
     private Recipe $recipe;
+    private Recipe $draft;
+    private string $draftSlug;
 
     protected function setUp(): void
     {
@@ -50,10 +55,20 @@ class RecipeGetToolTest extends KernelTestCase
         $this->recipe->addInstruction($instruction);
 
         $this->em->persist($this->recipe);
+
+        $this->draft = new Recipe();
+        $this->draft->setTitle('Chocolate draft test '.uniqid())
+            ->setDescription('A draft chocolate cake awaiting review.')
+            ->setDuration(45)
+            ->setCategory($this->category)
+            ->setStatus(RecipeStatus::Draft);
+        $this->em->persist($this->draft);
+
         $this->em->flush();
 
         // The slug is regenerated from the title by App\EventListener\SlugListener on prePersist.
         $this->slug = $this->recipe->getSlug();
+        $this->draftSlug = $this->draft->getSlug();
     }
 
     public function testGetReturnsFullRecipeDetail(): void
@@ -75,9 +90,18 @@ class RecipeGetToolTest extends KernelTestCase
         $this->assertArrayHasKey('error', $result);
     }
 
+    public function testGetReturnsErrorForADraftSlug(): void
+    {
+        $result = ($this->tool)($this->draftSlug);
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertArrayNotHasKey('title', $result);
+    }
+
     protected function tearDown(): void
     {
         $this->em->remove($this->recipe);
+        $this->em->remove($this->draft);
         $this->em->remove($this->ingredient);
         $this->em->remove($this->category);
         $this->em->flush();

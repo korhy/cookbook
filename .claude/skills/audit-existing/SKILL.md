@@ -1,6 +1,6 @@
 ---
 name: audit-existing
-description: Audit the existing Cookbook codebase against the project standards (strict typing, English naming, API contract drift, MCP read-only contract, security, dead code, test coverage, stale docs) and produce a prioritized report of what to redo vs keep. Read-only — proposes work, does not implement. Use when the user asks to audit the code, find what doesn't follow the standards, or "/audit-existing".
+description: Audit the existing Cookbook codebase against the project standards (strict typing, English naming, API contract drift, MCP read/write contract, security, dead code, test coverage, stale docs) and produce a prioritized report of what to redo vs keep. Read-only — proposes work, does not implement. Use when the user asks to audit the code, find what doesn't follow the standards, or "/audit-existing".
 ---
 
 # /audit-existing — Standards audit of the existing code
