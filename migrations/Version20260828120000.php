@@ -10,10 +10,11 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * Adds Recipe.status (the draft/published quarantine).
  *
- * Hand-written in three steps rather than as a single NOT NULL column: the production table holds
- * 13k+ rows, and `ADD COLUMN ... NOT NULL` without a default fails on a populated table. Every
- * existing row predates the MCP write path and was authored through EasyAdmin or the CSV import,
- * so it backfills to 'published' — the public API behaves exactly as before this migration.
+ * Hand-written in three steps rather than as a single NOT NULL column, because
+ * `ADD COLUMN ... NOT NULL` without a default fails on any table that already has rows.
+ *
+ * Every existing row predates the MCP write path, which is the only thing that creates drafts, so
+ * they all backfill to 'published' and the public API behaves exactly as it did before.
  */
 final class Version20260828120000 extends AbstractMigration
 {
