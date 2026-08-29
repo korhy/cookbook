@@ -31,7 +31,7 @@ final class RecipeController extends AbstractCrudController
         yield IntegerField::new('id')->onlyOnIndex();
         yield TextField::new('title');
         yield ChoiceField::new('status')
-            ->setChoices(self::statusChoices())
+            ->setChoices(self::statusFieldChoices())
             ->renderAsBadges([
                 RecipeStatus::Draft->value => 'warning',
                 RecipeStatus::Published->value => 'success',
@@ -68,17 +68,47 @@ final class RecipeController extends AbstractCrudController
         return $filters
             ->add('id')
             ->add('category')
-            ->add(ChoiceFilter::new('status')->setChoices(self::statusChoices()));
+            ->add(
+                ChoiceFilter::new('status')
+                    ->setChoices(self::statusFilterChoices())
+                    // ChoiceFilter::new() pins the domain to EasyAdminBundle, where our keys do
+                    // not live, so the raw `recipe_status.draft` would be rendered instead of the
+                    // label. The choice labels come from the inner ChoiceType.
+                    ->setFormTypeOption('value_type_options.choice_translation_domain', 'messages')
+            );
     }
 
     /**
-     * @return array<string, RecipeStatus> label => enum case, the shape EasyAdmin expects
+     * Choices for the *field*: EasyAdmin's ChoiceConfigurator understands backed enums and
+     * normalises them to their value before rendering.
+     *
+     * @return array<string, RecipeStatus> label => enum case
      */
-    private static function statusChoices(): array
+    private static function statusFieldChoices(): array
     {
         $choices = [];
         foreach (RecipeStatus::cases() as $case) {
             $choices[$case->label()] = $case;
+        }
+
+        return $choices;
+    }
+
+    /**
+     * Choices for the *filter*, which are scalar and not enum cases.
+     *
+     * The filter's values go through a plain Symfony ChoiceType, which has no way to turn the
+     * submitted string back into an enum instance without a choice_value callback — so enum cases
+     * here render as "The selected choice is invalid" on submit. The backed values round-trip
+     * natively, and DQL compares them against the enumType column without conversion.
+     *
+     * @return array<string, string> label => backed value
+     */
+    private static function statusFilterChoices(): array
+    {
+        $choices = [];
+        foreach (RecipeStatus::cases() as $case) {
+            $choices[$case->label()] = $case->value;
         }
 
         return $choices;
