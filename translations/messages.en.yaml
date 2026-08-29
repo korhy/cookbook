@@ -10,3 +10,6 @@ ingredient_unit:
         unit: "unit"
         pinch: "Pinch"
         slice: "Slice"
+recipe_status:
+        draft: "Draft"
+        published: "Published"

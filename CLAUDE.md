@@ -2,7 +2,7 @@
 
 Entry point for Claude Code configuration on **Cookbook** — a Symfony recipe application that is
 authored through an EasyAdmin back-office and **consumed by other applications** through a read-only
-API Platform surface and an MCP server. This file is loaded automatically by Claude Code when the
+API Platform surface and an MCP server whose write path is token-gated and produces drafts. This file is loaded automatically by Claude Code when the
 project is opened.
 
 The first-class consumer is **Radiant**, the portfolio: its "Cookbook" mini-app is a client of this
@@ -48,7 +48,7 @@ only when relevant.
     ├── backend-php.md             # PHP 8.4, Symfony 7.4, Doctrine 3 on PostgreSQL, DI, typing
     ├── symfony-best-practices.md  # Official best practices, reconciled with this stack
     ├── api-platform.md            # Resources on entities, groups, custom filters, pagination
-    ├── mcp.md                     # src/Mcp/Tool — the public, read-only tool contract
+    ├── mcp.md                     # src/Mcp/Tool — read tools + the token-gated write path
     ├── security.md                # JWT, the access_control ordering, CORS, secrets
     ├── easyadmin.md               # CRUD controllers, the dashboard menu, uploads, join entities
     ├── naming.md                  # English identifiers; French through the translation catalogue
@@ -63,15 +63,16 @@ only when relevant.
 ```
 .claude/skills/
 ├── new-api-resource/SKILL.md  # /new-api-resource — expose a resource on /api/v1, end to end
-├── new-mcp-tool/SKILL.md      # /new-mcp-tool     — add a read-only tool to the MCP server
+├── new-mcp-tool/SKILL.md      # /new-mcp-tool     — add a tool to the MCP server
 └── audit-existing/SKILL.md    # /audit-existing   — audit the code vs the standards, read-only
 ```
 
 - **`/new-api-resource`** — the project's real repeated pattern: entity + `#[ApiResource]` +
   serialization groups, repository, filters declared as `QueryParameter`, migration, the EasyAdmin
   CRUD **and its menu entry**, and the `tests/Api/` coverage that protects the contract.
-- **`/new-mcp-tool`** — scaffolds a tool in `src/Mcp/Tool/` and enforces the read-only,
-  bounded-result, untrusted-argument contract before generating anything.
+- **`/new-mcp-tool`** — scaffolds a tool in `src/Mcp/Tool/` and enforces the bounded-result,
+  untrusted-argument contract before generating anything. It defaults to a read tool and **stops to
+  ask** if the request implies a write.
 - **`/audit-existing`** — read-only audit against the standards (contract drift, MCP contract,
   typing, security, dead code, test gaps); emits a prioritized report under `docs/audit/`.
 
@@ -89,11 +90,15 @@ only when relevant.
 - **LexikJWTAuthenticationBundle** for API auth · **NelmioCorsBundle** for browser callers
 - **EasyAdmin 4** for the back-office · **VichUploader** for recipe thumbnails ·
   **KnpPaginator** · **Symfony UX Autocomplete** for the ingredient picker
-- **`symfony/mcp-bundle` 0.12** — a public, read-only MCP server at `/api/v1/mcp`
+- **`symfony/mcp-bundle` 0.12** — a public MCP server at `/api/v1/mcp`: read tools are
+  unauthenticated, the two write-adjacent tools are token-gated and produce drafts
 - **AssetMapper + importmap** — **no `package.json`, no `node_modules`, no build step.** The
   opposite of Radiant; do not import a Webpack habit here
 - **Translations** — real catalogues (`translations/messages.{fr,en}.yaml`), `default_locale: en`,
   `LocaleListener` reading `Accept-Language` and defaulting to `fr`
+- **`symfony/rate-limiter`** — three sliding windows (`mcp_write`, `mcp_import`,
+  `mcp_write_auth`) behind the MCP write guard, on the filesystem-backed `cache.rate_limiter`
+  pool. Note the limits reset when `var/cache` is cleared on deploy
 - **Linters**: php-cs-fixer (`@Symfony`) and **PHPStan level 5**, both gated in CI. There is **no
   Twig linter and no JS/CSS linter** here
 - **Tests**: PHPUnit 12 on PostgreSQL, with `failOnDeprecation` / `failOnNotice` / `failOnWarning`
@@ -127,8 +132,16 @@ only when relevant.
    `BREAKING CHANGE`.
 3. **The API is read-only.** Writes happen in EasyAdmin. Adding `POST`/`PUT`/`DELETE` is a design
    decision to raise with the user, not a step in a feature.
-4. **The MCP server is public, unauthenticated and read-only.** No tool in `src/Mcp/Tool/` may
-   write, return an unbounded result set, or expose a field the REST API does not.
+4. **The MCP server is public and unauthenticated; its *read* tools are read-only.** No read tool
+   in `src/Mcp/Tool/` may write, return an unbounded result set, or expose a field the REST API
+   does not.
+   **Two tools are the sanctioned exception** — `recipe_create` and `recipe_import_from_url`. They
+   are gated by `App\Service\Mcp\McpWriteGuard` (shared-secret token, brute-force lockout, rate
+   limit, audit trail) and everything `recipe_create` creates is a **draft**, invisible to
+   `/api/v1` and to the read tools until published in EasyAdmin. With `MCP_WRITE_TOKEN` unset they
+   refuse every call, which is the default. **Adding a third write tool is a security decision to
+   raise with the user, not a step in a feature** — and it must go through the guard and the draft
+   quarantine, never around them.
 5. **Never bypass Symfony's security system**: `#[IsGranted]`, voters or `access_control` — never a
    raw role-string comparison. Remember only the first matching `access_control` rule applies.
 6. **No business logic in controllers**: they orchestrate and delegate to `src/Service/`. The
@@ -139,7 +152,9 @@ only when relevant.
 8. **Strict typing everywhere**: `declare(strict_types=1)` at the top of every PHP file. **No file
    in `src/` has it today** — add it to every file you touch, rather than in one sweeping change.
 9. **No secrets in code**: `.env` holds non-secret defaults and is committed on purpose; real values
-   live in `.env.local`. Never log or echo the JWT passphrase, a token, or the admin credentials.
+   live in `.env.local`. Never log or echo the JWT passphrase, a token, or the admin credentials —
+   **`MCP_WRITE_TOKEN` included**. The guard logs an 8-character SHA-256 fingerprint, never the
+   token itself; keep it that way.
 10. **English identifiers everywhere**; user-facing French goes through
     `translations/messages.fr.yaml` — and every new key must be added to **both** catalogues.
 11. **Never set a slug by hand** — `SluggerService` via `SlugListener` owns it.

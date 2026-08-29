@@ -19,12 +19,15 @@ consumers, so its API surface is a contract, not an implementation detail.**
 ## Domain model (entities under `src/Entity`)
 
 - **Recipe** — `title`, `slug`, `description`, `duration` (minutes), `thumbnail`, `createdAt`,
-  `updatedAt`. Implements `SluggableInterface`. `#[ORM\HasLifecycleCallbacks]` stamps `createdAt`
+  `updatedAt`, `status` (`App\Enum\RecipeStatus`: `draft` | `published`, defaulting to
+  **published**). Implements `SluggableInterface`. `#[ORM\HasLifecycleCallbacks]` stamps `createdAt`
   on persist and `updatedAt` on update. Thumbnails go through **VichUploader**
   (`recipe_thumbnail` mapping); the entity exposes a non-persisted `thumbnailFile` alongside the
   persisted `thumbnail` filename.
 - **Category** — `name`, `slug`. One category, many recipes.
-- **Ingredient** — `name`, `slug`. Reached through `RecipeIngredient`, never directly.
+- **Ingredient** — `name`, `slug`. Reached through `RecipeIngredient`, never directly. Ingredients
+  are free-form vocabulary and *can* be minted by the MCP write path (capped at 5 per call);
+  **categories cannot** — the taxonomy is curated, so an unknown category is refused.
 - **RecipeIngredient** — the join entity carrying `quantity` and a `unit`
   (`App\Enum\IngredientUnit`). This is why "add an ingredient to a recipe" is never a plain
   many-to-many.
@@ -36,6 +39,20 @@ consumers, so its API surface is a contract, not an implementation detail.**
 Slugs are produced by `App\Service\SluggerService`, wired through `App\EventListener\SlugListener`
 for entities implementing `SluggableInterface`. **Never set a slug by hand** in application code —
 go through the listener.
+
+### Publication status
+
+`status` is the quarantine that makes an untrusted authoring path safe. Recipes authored through a
+**trusted** path — EasyAdmin, the CSV import — default to `published` and behave exactly as they
+always have. Only the MCP write tools create `draft` rows.
+
+**A draft is invisible outside the back-office.** `App\Doctrine\Extension\PublishedRecipeExtension`
+filters it out of both `/api/v1` operations, and `RecipeRepository::searchByKeywords()` /
+`findOneBySlug()` filter it out of the MCP read tools. Publication is a human action in EasyAdmin,
+where the "Drafts" menu entry is the review queue.
+
+Any new query that feeds a consumer must filter on status too. Forgetting is how unreviewed content
+reaches Radiant.
 
 ## The API contract (`/api/v1`)
 
@@ -75,11 +92,27 @@ in the database but Radiant doesn't see it".
 (`config/routes/mcp.yaml` prefixes the bundle's `/mcp` path with `/api/v1`; the route is granted
 `PUBLIC_ACCESS` in `security.yaml`).
 
-Three tools ship today: `recipe_search`, `recipe_get`, `category_list`.
+Six tools ship today, in two families:
 
-**The MCP server is public and read-only.** No tool may write, delete, or expose anything the REST
-API does not already publish. It is unauthenticated — treat every argument as untrusted input and
-never let one reach a query unparameterised.
+| Tool | Family | Notes |
+|---|---|---|
+| `recipe_search` | read | up to 5 published matches |
+| `recipe_get` | read | one published recipe by slug |
+| `category_list` | read | the full (small) taxonomy |
+| `ingredient_search` | read | up to 10 matches; use it before creating ingredients |
+| `recipe_create` | **write** | token-gated, creates a **draft** |
+| `recipe_import_from_url` | **write-gated read** | token-gated; fetches an allowlisted page, stores nothing |
+
+**The endpoint is public and unauthenticated, so every argument is untrusted** — never let one reach
+a query unparameterised. The read tools may not write, delete, or expose anything the REST API does
+not already publish.
+
+The two write-adjacent tools are the deliberate exception, and they are the *only* one: everything
+they do goes through `App\Service\Mcp\McpWriteGuard` (token, brute-force lockout, rate limit,
+audit trail) and lands as a draft. `recipe_import_from_url` never touches the database, and
+`recipe_create` never makes an outbound request — keeping those capabilities in separate classes is
+part of the design. The full contract is in
+[../technical/mcp.md](../technical/mcp.md); adding a third write tool is a decision for the user.
 
 `allowed_hosts` is restricted per environment in `config/packages/mcp.yaml`
 (`api.clementboudinel.fr` in prod; `localhost`, `127.0.0.1` and `cookbook_app` in dev/test). A tool
@@ -98,15 +131,18 @@ not part of the repository.
 src/
 ├── Command/        # console commands (ImportCsvCommand)
 ├── Controller/     # SecurityController + Admin/ (EasyAdmin CRUD controllers)
-├── DTO/
+├── DTO/            # DTO/Mcp/ holds the validated MCP write inputs
+├── Doctrine/       # Doctrine/Extension/ — API Platform query extensions (the draft filter)
 ├── Entity/         # Doctrine entities — and where #[ApiResource] lives
-├── Enum/           # IngredientUnit
+├── Enum/           # IngredientUnit, RecipeStatus
+├── Exception/      # Exception/Mcp/ — the write-path refusals
 ├── EventListener/  # SlugListener, LocaleListener
 ├── Filter/         # custom API Platform filters
 ├── Form/           # form types used by EasyAdmin
-├── Mcp/Tool/       # MCP tools — read-only
+├── Mcp/Tool/       # MCP tools — read tools, plus the two token-gated write tools
 ├── Repository/     # every Doctrine query lives here
 ├── Serializer/     # custom normalizers
-├── Service/        # business logic
+├── Service/        # business logic — Service/Mcp/ (the write guard),
+│                   #   Service/Http/ (the SSRF-guarded fetcher), Service/Recipe/
 └── Validator/      # custom constraints (BanWord)
 ```

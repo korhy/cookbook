@@ -1,7 +1,9 @@
 mcp:
     app: 'cookbook'
     version: '1.0.0'
-    description: 'Public read-only MCP server exposing recipe and category search for the Cookbook API.'
+    # Read tools are public and unauthenticated; the two write-adjacent tools (recipe_create,
+    # recipe_import_from_url) are gated by MCP_WRITE_TOKEN and refuse every call when it is unset.
+    description: 'MCP server for the Cookbook API. Recipe, ingredient and category search are public and read-only; creating a recipe requires a write token and produces an unpublished draft.'
 
     client_transports:
         stdio: true

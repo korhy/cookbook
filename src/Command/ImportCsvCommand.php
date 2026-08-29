@@ -25,6 +25,16 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class ImportCsvCommand extends Command
 {
+    /**
+     * The entities whose ids come from the CSV files rather than from Postgres.
+     *
+     * Assigning ids by hand means the id sequences are never advanced, so they stay at 1 while the
+     * tables fill up. The next code to insert normally -- EasyAdmin, or the MCP write tools -- then
+     * asks Postgres for an id, gets 1, and collides with an existing row. That is why
+     * resynchroniseSequences() runs at the end of a real import.
+     */
+    private const ENTITIES_WITH_ASSIGNED_IDS = [Category::class, Ingredient::class, Recipe::class];
+
     public function __construct(
         private EntityManagerInterface $entityManager,
         private SluggerService $sluggerService,
@@ -67,9 +77,9 @@ HELP
         try {
             $io = new SymfonyStyle($input, $output);
 
-            $this->disableAutoIncrement(Category::class);
-            $this->disableAutoIncrement(Ingredient::class);
-            $this->disableAutoIncrement(Recipe::class);
+            foreach (self::ENTITIES_WITH_ASSIGNED_IDS as $entityClass) {
+                $this->disableAutoIncrement($entityClass);
+            }
 
             $delimiter = $input->getOption('delimiter');
             $batchSize = (int) $input->getOption('batch-size');
@@ -457,6 +467,10 @@ HELP
             $io->newLine();
             $io->success(sprintf('Imported %d recipe instructions%s!', $totalRecipeInstructions, $dryRun ? ' (dry run)' : ''));
 
+            if (!$dryRun) {
+                $this->resynchroniseSequences($io);
+            }
+
             return Command::SUCCESS;
         } catch (\Exception $e) {
             $io->error($e->getMessage());
@@ -474,6 +488,35 @@ HELP
     {
         $this->entityManager->clear();
         // gc_collect_cycles(); // Force garbage collection
+    }
+
+    /**
+     * Advances each assigned-id sequence past the rows the import just wrote.
+     *
+     * Without this the command leaves the database in a state where the *next* ordinary insert
+     * fails on a duplicate primary key -- a failure that surfaces far from its cause, in whatever
+     * feature happens to create a row first.
+     *
+     * `setval`'s third argument is `is_called`: true means "the next id is this + 1", which is what
+     * a populated table needs. For an empty table it is false, so the next id is 1 rather than 2.
+     */
+    private function resynchroniseSequences(SymfonyStyle $io): void
+    {
+        $connection = $this->entityManager->getConnection();
+
+        foreach (self::ENTITIES_WITH_ASSIGNED_IDS as $entityClass) {
+            // From Doctrine metadata, never from input: a table name cannot be a bound parameter.
+            $table = $this->entityManager->getClassMetadata($entityClass)->getTableName();
+
+            $connection->executeStatement(sprintf(
+                "SELECT setval(pg_get_serial_sequence('%1\$s', 'id'),"
+                .' COALESCE((SELECT MAX(id) FROM %1$s), 1),'
+                .' (SELECT MAX(id) FROM %1$s) IS NOT NULL)',
+                $table,
+            ));
+
+            $io->text(sprintf('Sequence for "%s" resynchronised.', $table));
+        }
     }
 
     private function disableAutoIncrement(string $entityClass): void

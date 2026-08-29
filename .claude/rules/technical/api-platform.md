@@ -28,6 +28,21 @@ user first, not a change to slip into a feature.
 
 `stateless: true` is on globally: no session, no server-side state between requests.
 
+### Drafts never reach a consumer
+
+`Recipe` carries a `status` (`draft` | `published`). `App\Doctrine\Extension\PublishedRecipeExtension`
+implements both `QueryCollectionExtensionInterface` and `QueryItemExtensionInterface` and appends
+`status = published` to every Recipe query, so a draft 404s on the item operation and is absent from
+the collection.
+
+It lives in a query extension rather than in `RecipeRepository` for a reason worth knowing: **API
+Platform builds its own query builder and never calls the repository**, so a filter added there
+would not protect the REST surface at all. Extensions are autoconfigured by their interfaces — no
+manual tag.
+
+If you add another resource with an unpublished state, it needs its own extension. And any test for
+it belongs in `tests/Api/` — `RecipeDraftVisibilityTest` is the model.
+
 ## Serialization groups
 
 - Every exposed property carries `#[Groups(['<resource>:read'])]`. **A property without it is

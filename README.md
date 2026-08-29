@@ -18,9 +18,13 @@ surface is treated as a contract rather than an implementation detail.
   carrying a quantity and a unit through a dedicated join entity.
 - **Read API** (`/api/v1`) — JSON-LD, JWT-authenticated, paginated, with filtering on title,
   category and ingredient, and sorting on slug, duration and creation date.
-- **MCP server** (`/api/v1/mcp`) — public, read-only tools (`recipe_search`, `recipe_get`,
-  `category_list`) so an AI client can query the catalogue.
-- **Back-office** (`/admin`) — EasyAdmin 4, the only way content is edited.
+- **MCP server** (`/api/v1/mcp`) — public read tools (`recipe_search`, `recipe_get`,
+  `category_list`, `ingredient_search`) so an AI client can query the catalogue, plus two
+  **token-gated** tools (`recipe_create`, `recipe_import_from_url`). Writes land as unpublished
+  **drafts** and stay invisible to the API until approved in the back-office; with no token
+  configured they refuse every call, which is the default.
+- **Back-office** (`/admin`) — EasyAdmin 4, where all content is edited and where MCP-submitted
+  drafts are reviewed and published.
 - **CSV import** — `app:import-csv` bulk-loads a whole recipe catalogue.
 
 ## API
@@ -63,6 +67,88 @@ curl -X POST http://localhost:8001/api/login_check \
 curl -H "Authorization: Bearer <token>" \
   'http://localhost:8001/api/v1/recipes?page=1&itemsPerPage=10&order[duration]=asc'
 ```
+
+## MCP server
+
+An [MCP](https://modelcontextprotocol.io/) server is published at **`/api/v1/mcp`** over both HTTP
+and stdio, so an AI client can browse the catalogue — and, with a token, submit a recipe to it.
+
+Unlike the REST API, the read tools need **no authentication**. That is deliberate: they expose
+nothing the REST API does not already publish, and every result is bounded.
+
+### Tools
+
+| Tool | Auth | Returns |
+|---|---|---|
+| `recipe_search` | public | up to 5 published recipes matching a keyword |
+| `recipe_get` | public | one published recipe by slug, with ingredients and steps |
+| `category_list` | public | the full (small) category list |
+| `ingredient_search` | public | up to 10 ingredients matching a name |
+| `recipe_create` | **token** | creates a recipe as an unpublished **draft** |
+| `recipe_import_from_url` | **token** | extracts a recipe from an allowlisted page — stores nothing |
+
+### Connecting a client
+
+There is no `.mcp.json` in this repository; create one where your client expects it:
+
+```json
+{
+  "mcpServers": {
+    "cookbook": {
+      "type": "http",
+      "url": "http://localhost:8001/api/v1/mcp"
+    }
+  }
+}
+```
+
+`config/packages/mcp.yaml` restricts the `Host` header per environment (`api.clementboudinel.fr` in
+production; `localhost`, `127.0.0.1` and `cookbook_app` in dev). A tool that "does not answer" from
+inside a container is almost always a host missing from that list, not a broken tool.
+
+### The write path
+
+`recipe_create` and `recipe_import_from_url` are the only tools that are not read-only, and they are
+**disabled by default**. Enable them in `.env.local`:
+
+```dotenv
+# openssl rand -hex 32 — must be at least 32 characters
+MCP_WRITE_TOKEN=
+
+# comma-separated, exact match: "marmiton.org" does not cover "www.marmiton.org"
+MCP_IMPORT_ALLOWED_HOSTS=
+```
+
+With `MCP_WRITE_TOKEN` empty every write call is refused, so deploying this project never turns the
+public endpoint into a write surface on its own.
+
+**Nothing an MCP client submits goes live.** `recipe_create` stores a **draft**, which is invisible
+to `/api/v1` and to the read tools until an administrator publishes it from the "Drafts" queue in
+the back-office. The intended flow is:
+
+1. `ingredient_search` — reuse existing ingredient names instead of creating near-duplicates.
+2. `category_list` — categories must already exist; unknown ones are refused rather than created.
+3. `recipe_import_from_url` *(optional)* — pull a recipe off a page to review before saving it.
+4. `recipe_create` — save it as a draft.
+5. A human publishes it in `/admin`.
+
+Caps: 50 ingredients, 50 instructions, and **at most 5 previously-unknown ingredients per call**.
+Writes are rate-limited per token and failed authentication is locked out per IP; every attempt is
+recorded in `var/log/mcp_audit.log`. URL imports are restricted to HTTPS hosts on the allowlist,
+blocked from reaching private or link-local addresses, and read only `schema.org/Recipe` JSON-LD —
+there is no HTML scraping fallback.
+
+### Trying it
+
+```bash
+curl -s -X POST http://localhost:8001/api/v1/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+Reuse the `Mcp-Session-Id` header it returns for a `notifications/initialized` call, then
+`tools/list`.
 
 ## Getting started
 
@@ -227,7 +313,7 @@ the cache. The full procedure and the OVH-specific traps are in **[DEPLOY.md](DE
 │   ├── EventListener/  # SlugListener, LocaleListener
 │   ├── Filter/         # custom API Platform filters
 │   ├── Form/           # form types used by EasyAdmin
-│   ├── Mcp/Tool/       # MCP tools — read-only
+│   ├── Mcp/Tool/       # MCP tools — read tools + the token-gated write tools
 │   ├── Repository/     # every Doctrine query lives here
 │   ├── Serializer/     # custom normalizers
 │   ├── Service/        # business logic
