@@ -1,17 +1,29 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Mcp\Tool;
 
 use App\Entity\Category;
 use App\Repository\CategoryRepository;
 use Mcp\Capability\Attribute\McpTool;
 
+/**
+ * The taxonomy, for callers that need a valid category name before calling recipe_create — which
+ * refuses an unknown one rather than minting it.
+ */
 #[McpTool(
     name: 'category_list',
-    description: 'List all available recipe categories.',
+    description: 'List the available recipe categories, alphabetically. Returns up to 50; the taxonomy is curated and small. Use this before recipe_create, which refuses a category that does not already exist.',
 )]
-class CategoryListTool
+final class CategoryListTool
 {
+    /**
+     * The taxonomy is curated and currently well under this. The cap exists because the endpoint is
+     * public and unauthenticated, so "small today" is not a bound.
+     */
+    private const MAX_RESULTS = 50;
+
     public function __construct(private readonly CategoryRepository $categoryRepository)
     {
     }
@@ -28,7 +40,7 @@ class CategoryListTool
                     'name' => $category->getName(),
                     'slug' => $category->getSlug(),
                 ],
-                $this->categoryRepository->getAllQueryBuilder()->getQuery()->getResult(),
+                $this->categoryRepository->findAllOrderedByName(self::MAX_RESULTS),
             ),
         ];
     }

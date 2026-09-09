@@ -34,10 +34,21 @@ class CategoryRepository extends ServiceEntityRepository
             ->getOneOrNullResult();
     }
 
-    public function getAllQueryBuilder(): \Doctrine\ORM\QueryBuilder
+    /**
+     * The taxonomy, alphabetically, bounded.
+     *
+     * The limit is not defensive padding: this feeds the public, unauthenticated `category_list`
+     * MCP tool, and an unbounded result set there is the whole table on one request.
+     *
+     * @return Category[]
+     */
+    public function findAllOrderedByName(int $limit): array
     {
         return $this->createQueryBuilder('c')
-            ->orderBy('c.name', 'ASC');
+            ->orderBy('c.name', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
     }
 
     //    /**
