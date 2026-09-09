@@ -76,13 +76,17 @@ abstract class AuthenticatedApiTestCase extends ApiTestCase
      * `toArray(false)` because the error cases are as interesting as the happy ones: a 400 or a 404
      * still has a body worth asserting on.
      *
+     * @param array<string, string> $headers merged over the defaults — `Accept-Language` matters,
+     *                                       because LocaleListener reads it and the unit labels are
+     *                                       translated
+     *
      * @return array<string, mixed>
      */
-    protected function apiRequest(string $method, string $url, int $expectedStatus = 200): array
+    protected function apiRequest(string $method, string $url, int $expectedStatus = 200, array $headers = []): array
     {
         $response = static::createClient()->request($method, $url, [
             'auth_bearer' => $this->token,
-            'headers' => ['Accept' => 'application/ld+json'],
+            'headers' => ['Accept' => 'application/ld+json', ...$headers],
         ]);
 
         $this->assertSame($expectedStatus, $response->getStatusCode());
