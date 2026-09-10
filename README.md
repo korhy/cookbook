@@ -82,7 +82,7 @@ nothing the REST API does not already publish, and every result is bounded.
 |---|---|---|
 | `recipe_search` | public | up to 5 published recipes matching a keyword |
 | `recipe_get` | public | one published recipe by slug, with ingredients and steps |
-| `category_list` | public | the full (small) category list |
+| `category_list` | public | up to 50 categories, alphabetically |
 | `ingredient_search` | public | up to 10 ingredients matching a name |
 | `recipe_create` | **token** | creates a recipe as an unpublished **draft** |
 | `recipe_import_from_url` | **token** | extracts a recipe from an allowlisted page — stores nothing |
@@ -293,7 +293,8 @@ Production is **OVH mutualisé — not Docker.** Docker is a local development t
 
 Every green CI run on `main` triggers `deploy.yml`, which connects over SSH, pulls, installs the
 production dependencies, runs the migrations non-interactively, compiles the asset map and clears
-the cache. The full procedure and the OVH-specific traps are in **[DEPLOY.md](DEPLOY.md)**.
+the cache. The full procedure and the OVH-specific traps are in **DEPLOY.md** — a local,
+untracked file (the global `core.excludesFile` matches it), so a fresh clone will not have it.
 
 ## Project structure
 
@@ -319,6 +320,7 @@ the cache. The full procedure and the OVH-specific traps are in **[DEPLOY.md](DE
 │   ├── Service/        # business logic
 │   └── Validator/      # custom constraints
 ├── templates/          # Twig (admin overrides, security)
-├── tests/              # Api, Controller, Entity, Mcp, Repository, Service
+├── tests/              # Api, Controller, Entity, EventListener, Mcp, Monolog,
+│                    #   Repository, Service, Validator + fixtures
 └── translations/       # messages.fr.yaml / messages.en.yaml
 ```
