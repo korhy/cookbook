@@ -35,6 +35,10 @@ Level **5**, over `bin/`, `config/`, `public/`, `src/` and `tests/` (`phpstan.di
 
 - `property.unusedType` is globally ignored — that is the Doctrine nullable-property idiom, not a
   finding.
+- **`- public/adminer.php (?)` in `excludePaths` is not a typo.** The trailing `(?)` is PHPStan's
+  *optional path* marker: exclude this, and do not error if it is missing. That is exactly right
+  here, because `public/adminer.php` is gitignored and does not exist in CI. Remove the `(?)` and
+  the pipeline fails with a config error before it analyses a line.
 - **Do not add an `ignoreErrors` entry to get green.** Fix the type, or narrow the ignore to a
   single identifier and say in the commit why. A baseline file is not the answer either.
 - The Make target passes `-d memory_limit=-1`: PHPStan's parallel workers otherwise hit the
