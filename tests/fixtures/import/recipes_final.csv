@@ -1,0 +1,4 @@
+id,recipe_title,description,id_category
+9301,Importtest chocolate cake,A rich cake.,9101
+9302,Importtest onion soup,A warming soup.,9102
+9303,,No title so this row is skipped.,9101
