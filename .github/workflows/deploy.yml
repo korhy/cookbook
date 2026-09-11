@@ -26,13 +26,24 @@ jobs:
             git checkout main
             git checkout -- config/reference.php
             git pull origin main
-            APP_ENV=prod php composer.phar install --no-dev --optimize-autoloader
+            # --no-scripts is load-bearing. composer's post-install-cmd runs @auto-scripts, whose
+            # first entry is a plain `cache:clear` — the exact command the steps below exist to
+            # avoid, because it clears and then warms into an empty directory and trips
+            # DoctrineMetadataCacheWarmer every time. Without set -e that failure was swallowed;
+            # with it, the deploy aborts here and every step after it is skipped.
+            APP_ENV=prod php composer.phar install --no-dev --optimize-autoloader --no-scripts
+            # The prod container is compiled once and never freshness-checked, so a release that
+            # deletes a service leaves bin/console booting a container that references a class
+            # which is no longer there. Removing the directory outright is the only thing that
+            # cannot trip over the stale container on its way to replacing it.
+            rm -rf var/cache/prod
             APP_ENV=prod php bin/console doctrine:migrations:migrate --no-interaction
+            # The three @auto-scripts entries, run explicitly and in an order that works.
+            # assets/vendor/ and public/assets/ are git-ignored, so importmap:install and
+            # asset-map:compile are not optional on the server.
             APP_ENV=prod php bin/console assets:install
+            APP_ENV=prod php bin/console importmap:install
             APP_ENV=prod php bin/console asset-map:compile
-            # `cache:clear` runs the optional warmers, one of which loads Doctrine metadata
-            # before DoctrineMetadataCacheWarmer and makes it throw on a cold cache. Splitting the
-            # clear from a warmup that skips the optional warmers is the combination that works;
-            # the remaining caches are built lazily on the first request.
-            APP_ENV=prod php bin/console cache:clear --no-warmup
+            # Never a plain `cache:warmup`: --no-optional-warmers is what keeps
+            # DoctrineMetadataCacheWarmer out of it. The rest is built lazily on first request.
             APP_ENV=prod php bin/console cache:warmup --no-optional-warmers
