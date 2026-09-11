@@ -6,6 +6,7 @@ namespace App\Service\Recipe;
 
 use App\DTO\Mcp\IngredientLineInput;
 use App\DTO\Mcp\RecipeDraftInput;
+use App\Entity\Category;
 use App\Entity\Ingredient;
 use App\Entity\Instruction;
 use App\Entity\Recipe;
@@ -17,6 +18,7 @@ use App\Repository\IngredientRepository;
 use App\Repository\RecipeRepository;
 use App\Service\SluggerService;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\ConstraintViolationListInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
@@ -178,7 +180,7 @@ final class RecipeDraftFactory
     /**
      * @throws RecipeDraftRejectedException
      */
-    private function resolveCategory(?string $category): ?\App\Entity\Category
+    private function resolveCategory(?string $category): ?Category
     {
         if (null === $category || '' === trim($category)) {
             return null;
@@ -194,11 +196,11 @@ final class RecipeDraftFactory
     }
 
     /**
-     * @param \Symfony\Component\Validator\ConstraintViolationListInterface<\Symfony\Component\Validator\ConstraintViolationInterface> $violations
+     * @param ConstraintViolationListInterface<\Symfony\Component\Validator\ConstraintViolationInterface> $violations
      *
      * @return string[]
      */
-    private function messages(\Symfony\Component\Validator\ConstraintViolationListInterface $violations): array
+    private function messages(ConstraintViolationListInterface $violations): array
     {
         $messages = [];
 

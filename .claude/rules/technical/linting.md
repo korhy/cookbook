@@ -22,8 +22,8 @@ Both run **inside the container** — `make up` first.
 ## php-cs-fixer
 
 `@Symfony` ruleset, configured in `.php-cs-fixer.dist.php`. It walks the whole project except
-`var/`, `migrations/`, `vendor/`, and three specific files: `config/bundles.php`,
-`config/reference.php`, `public/adminer.php`.
+`var/`, `migrations/`, `vendor/`, and two specific files: `config/bundles.php` and
+`config/reference.php`.
 
 `config/reference.php` is excluded for a reason worth knowing: it is **rewritten on the production
 server**, and `deploy.yml` runs `git checkout -- config/reference.php` before pulling. Never

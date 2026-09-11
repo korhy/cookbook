@@ -22,7 +22,7 @@ paths:
 | Method / function | `camelCase`, verb-first | `searchByKeywords()`, `findOneBySlug()` |
 | Variable / property / argument | `camelCase`, English | `$recipeIngredients`, `$createdAt` |
 | Constant / enum case | `UPPER_SNAKE_CASE` | `ROLE_ADMIN` |
-| Console command | `app:kebab-case` | `app:import-csv` |
+| Console command | `app:kebab-case` | `app:send-digest` |
 | MCP tool `name` | `snake_case`, English | `recipe_search`, `category_list` |
 | API resource path | plural, snake_case | `/api/v1/recipes`, `/api/v1/recipe_ingredients` |
 | Query parameter | `camelCase`, or `order[property]` | `itemsPerPage`, `order[createdAt]` |
@@ -36,8 +36,7 @@ paths:
 - Booleans read as predicates: `isPublished`, `hasIngredients`.
 - Collections are plural (`$recipes`), a single item singular (`$recipe`).
 
-**The codebase is clean on this point today** — there is no French-identifier drift in `src/`. Keep
-it that way; a single `$duree` is the beginning of the drift.
+**There is no acceptable amount of drift here** — a single `$duree` is how it starts.
 
 ## Public names are contracts
 

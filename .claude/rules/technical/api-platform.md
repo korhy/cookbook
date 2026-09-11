@@ -32,16 +32,22 @@ user first, not a change to slip into a feature.
 
 `Recipe` carries a `status` (`draft` | `published`). `App\Doctrine\Extension\PublishedRecipeExtension`
 implements both `QueryCollectionExtensionInterface` and `QueryItemExtensionInterface` and appends
-`status = published` to every Recipe query, so a draft 404s on the item operation and is absent from
-the collection.
+`status = published`, so a draft 404s on the item operation and is absent from the collection.
+
+**It guards every resource that reaches a recipe, not just `Recipe`.** `Instruction` and
+`RecipeIngredient` are resources in their own right and carry the step text and the quantities, so
+filtering `/recipes` alone leaves the interesting half of a draft readable at `/instructions`. The
+`RECIPE_ASSOCIATION` map in that class says which association leads to the recipe; a resource
+absent from it is not filtered at all, so anything that gains one has to be added there.
 
 It lives in a query extension rather than in `RecipeRepository` for a reason worth knowing: **API
 Platform builds its own query builder and never calls the repository**, so a filter added there
 would not protect the REST surface at all. Extensions are autoconfigured by their interfaces — no
 manual tag.
 
-If you add another resource with an unpublished state, it needs its own extension. And any test for
-it belongs in `tests/Api/` — `RecipeDraftVisibilityTest` is the model.
+A resource with an unpublished state of its *own* needs its own extension; one that merely hangs
+off a recipe just needs a line in that map. Either way the test belongs in `tests/Api/` —
+`RecipeDraftVisibilityTest` and `DraftLeakTest` are the models.
 
 ## Serialization groups
 

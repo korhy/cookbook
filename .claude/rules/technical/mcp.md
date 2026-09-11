@@ -36,8 +36,8 @@ else.
 
 `recipe_search`, `recipe_get`, `category_list`, `ingredient_search`. Unauthenticated, and **they
 must not write**: no persist, no flush, no delete, no command dispatch. Results are bounded
-(`recipe_search` caps at 5, `ingredient_search` at 10) — a tool that can return the whole 13k-row
-table is a defect. They see **published recipes only**; `RecipeRepository::searchByKeywords()` and
+(`recipe_search` caps at 5, `ingredient_search` at 10, `category_list` at 50) — a tool that can
+return the whole 13k-row table is a defect. They see **published recipes only**; `RecipeRepository::searchByKeywords()` and
 `findOneBySlug()` filter on status for that reason.
 
 ### Write tools — the sanctioned exception, not a precedent
@@ -90,14 +90,21 @@ so the tool cannot be conditionally unregistered. It hard-refuses instead.
     name: 'recipe_search',
     description: 'Search for recipes by keyword… Returns up to 5 matches.',
 )]
-class RecipeSearchTool
+final class RecipeSearchTool
 {
-    public function __construct(private readonly RecipeRepository $recipeRepository) {}
+    public function __construct(
+        private readonly RecipeRepository $recipeRepository,
+        private readonly RecipePresenter $presenter,
+    ) {}
 
     /** @return array{recipes: array<int, array{id: ?int, title: ?string, …}>} */
     public function __invoke(string $keywords): array { … }
 }
 ```
+
+Tools are `final` and carry `declare(strict_types=1)`. **Map the entity through
+`App\Service\Mcp\RecipePresenter` rather than by hand** — it is the single place where "a read
+tool may not expose a field the REST API does not" stays checkable.
 
 - **`name`** is snake_case and stable. Renaming one breaks every configured client — treat it like
   an API rename.

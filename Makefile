@@ -110,10 +110,6 @@ admin: ## Print a password hash to insert into the admin table (see README)
 	$(CONSOLE) security:hash-password
 
 ## —— Data ——————————————————————————————————————————————————————————
-.PHONY: import-csv
-import-csv: ## Import the CSV files from public/data (make import-csv ARGS="--dry-run")
-	$(CONSOLE) app:import-csv --skip-header --batch-size=50 $(ARGS)
-
 ## —— Assets (AssetMapper — no npm, no build step) ———————————————————
 .PHONY: assets
 assets: ## Install vendor assets and compile the asset map

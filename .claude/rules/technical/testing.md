@@ -35,13 +35,23 @@ explicitly for that reason. **Never invoke `bin/phpunit` directly inside the con
 
 ```
 tests/
-├── Api/          # RecipePaginationTest, McpEndpointTest — the public contract
-├── Controller/   # SecurityControllerTest — login
-├── Entity/       # RecipeTest — entity behaviour
-├── Mcp/Tool/     # one test per MCP tool
-├── Repository/   # RecipeRepositoryTest — the queries
-└── Service/      # SluggerServiceTest
+├── Api/            # the /api/v1 contract — pagination, filters, serialization, the quarantine
+├── Controller/     # HTTP controllers and the EasyAdmin CRUD
+├── Entity/         # entity behaviour
+├── EventListener/  # Doctrine and kernel listeners
+├── Mcp/Tool/       # one test per MCP tool
+├── Monolog/        # log processors
+├── Repository/     # the queries
+├── Service/        # business logic
+├── Validator/      # custom constraints
+└── fixtures/       # fixture files for the tests that need them
 ```
+
+**Extend `App\Tests\Api\AuthenticatedApiTestCase` for anything hitting `/api/v1`.** Everything
+under `^/api` bar three paths is `ROLE_ADMIN`, and that base owns minting the JWT, the bearer
+request helper and the cleanup. Its `clearRecipes()` deletes the instruction and
+recipe_ingredient rows *before* the recipes: neither foreign key is `ON DELETE CASCADE`, and a DQL
+`DELETE` does not honour Doctrine's `cascade: remove`.
 
 Coverage is **deliberately partial** — the point is the risky surface, not a percentage. What must
 always be tested:

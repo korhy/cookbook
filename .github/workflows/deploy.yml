@@ -18,6 +18,9 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # Without this the script keeps running after a failed command and the action reports the
+            # exit code of the LAST one, so a broken cache rebuild deployed silently.
+            set -e
             cd ${{ secrets.DEPLOY_PATH }}
             git fetch origin main
             git checkout main
@@ -27,5 +30,9 @@ jobs:
             APP_ENV=prod php bin/console doctrine:migrations:migrate --no-interaction
             APP_ENV=prod php bin/console assets:install
             APP_ENV=prod php bin/console asset-map:compile
-            APP_ENV=prod php bin/console cache:clear
-            APP_ENV=prod php bin/console cache:warmup
+            # `cache:clear` runs the optional warmers, one of which loads Doctrine metadata
+            # before DoctrineMetadataCacheWarmer and makes it throw on a cold cache. Splitting the
+            # clear from a warmup that skips the optional warmers is the combination that works;
+            # the remaining caches are built lazily on the first request.
+            APP_ENV=prod php bin/console cache:clear --no-warmup
+            APP_ENV=prod php bin/console cache:warmup --no-optional-warmers

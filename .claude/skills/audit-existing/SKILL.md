@@ -23,10 +23,10 @@ recommends; the work is then done by `/new-api-resource`, `/new-mcp-tool`, or by
    unauthenticated**. Check every tool in `src/Mcp/Tool/` for: any write (persist/flush/remove), an
    unbounded result set, a field not exposed by the REST API, an argument reaching a query
    unparameterised, a `description` that does not state the tool's limits.
-3. **Typing** ([backend-php.md](../../rules/technical/backend-php.md)) — **no file in `src/` carries
-   `declare(strict_types=1)` today** (39 files). Do not report that as 39 findings: report it once,
-   with the list, and propose a file-by-file order weighted by risk (services and filters first,
-   entities last). Also: untyped params/returns, classes that should be `final`.
+3. **Typing** ([backend-php.md](../../rules/technical/backend-php.md)) — files missing
+   `declare(strict_types=1)`. Report them as **one** finding with the list attached, never one per
+   file, ordered by risk (services and filters first, entities last). Also: untyped
+   params/returns, classes that should be `final`.
 4. **Security** ([security.md](../../rules/technical/security.md)) — the `access_control` ordering
    (only the first match applies, and `^/api` sits above nothing but the three `PUBLIC_ACCESS`
    lines); any new `/api/…` route that inherited `ROLE_ADMIN` when it should not have, or the
@@ -42,8 +42,8 @@ recommends; the work is then done by `/new-api-resource`, `/new-mcp-tool`, or by
    `messages.fr.yaml` but missing from `messages.en.yaml` (or vice versa) renders as the raw key.
 7. **Dead code** — unused entities, repository methods nobody calls, Stimulus controllers in
    `assets/controllers/` never registered, importmap entries for packages no longer imported,
-   `public/adminer.php` (superseded by the Adminer container on `:8083`), leftover dumps and PDFs
-   at the repository root. Say what is safe to delete versus what is merely unused.
+   anything dropped into `public/` that is not an asset, leftover dumps and PDFs at the repository
+   root. Say what is safe to delete versus what is merely unused.
 8. **Duplication** — repeated entity-to-array mapping across MCP tools that should be a service;
    repeated query fragments that belong in one repository method.
 9. **Tests** ([testing.md](../../rules/technical/testing.md)) — map the existing suite

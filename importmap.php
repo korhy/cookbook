@@ -38,22 +38,6 @@ return [
     '@orchidjs/unicode-variants' => [
         'version' => '1.1.2',
     ],
-    'tom-select/dist/css/tom-select.default.min.css' => [
-        'version' => '2.4.3',
-        'type' => 'css',
-    ],
-    'tom-select/dist/css/tom-select.default.css' => [
-        'version' => '2.5.2',
-        'type' => 'css',
-    ],
-    'tom-select/dist/css/tom-select.bootstrap4.css' => [
-        'version' => '2.5.2',
-        'type' => 'css',
-    ],
-    'tom-select/dist/css/tom-select.bootstrap5.css' => [
-        'version' => '2.5.2',
-        'type' => 'css',
-    ],
     '@symfony/ux-autocomplete' => [
         'version' => '2.32.0',
     ],

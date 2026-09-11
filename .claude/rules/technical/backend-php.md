@@ -15,9 +15,10 @@ paths:
 - **PHP 8.4 is what actually runs.** `composer.json` declares `>=8.2`, but CI
   (`.github/workflows/ci.yml`), the OVH production host and the dev container all run **8.4**.
   Nothing validates 8.2, so treat 8.4 as the target and do not trust the `>=8.2` floor.
-- `declare(strict_types=1)` at the top of **every** PHP file. **No file in `src/` has it today** —
-  the codebase predates the rule. Add it to any file you touch, one file at a time; do not open a
-  sweeping "add strict_types everywhere" change unless that is the task.
+- `declare(strict_types=1)` at the top of **every** PHP file. Weak mode coerces silently: an
+  object with `__toString()` handed to a `string` parameter is accepted, and the same call is a
+  `TypeError` under strict types. That class of bug stays invisible until the declaration is
+  there, which is why it is not optional per file.
 - Strict typing on parameters and returns; typed properties.
 - `final` classes by default; open one only when it is genuinely meant to be extended. Doctrine
   entities are the standing exception (the proxy generator needs them non-final).
@@ -63,5 +64,5 @@ paths:
 ## Commands
 
 - Console commands use `#[AsCommand]` and stay thin: parse input, delegate, report.
-- Long-running commands (`app:import-csv`) must batch and clear the entity manager or they exhaust
-  memory. The existing `--batch-size` option is the pattern to follow.
+- A command that walks a large result set must flush and clear the entity manager in batches, or
+  it exhausts memory. Expose the batch size as an option rather than hard-coding it.

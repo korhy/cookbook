@@ -15,7 +15,7 @@ enum IngredientUnit: string
      */
     public const VALUES = ['g', 'kg', 'ml', 'cl', 'L', 'tsp', 'tbsp', 'cup', 'unit', 'pinch', 'slice'];
 
-    // Masse
+    // Mass
     case Gram = 'g';
     case Kilogram = 'kg';
 
@@ -24,12 +24,12 @@ enum IngredientUnit: string
     case Centiliter = 'cl';
     case Liter = 'L';
 
-    // Cuisine
+    // Kitchen measures
     case Teaspoon = 'tsp';
     case Tablespoon = 'tbsp';
     case Cup = 'cup';
 
-    // Quantité
+    // Counts
     case Unit = 'unit';
     case Pinch = 'pinch';
     case Slice = 'slice';

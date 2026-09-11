@@ -108,7 +108,8 @@ only when relevant.
 
 1. **Production is OVH mutualisé — no Docker.** Docker is a *local development* tool in this
    project only. `deploy.yml` pulls over SSH and runs `php composer.phar` (Composer is not in the
-   `PATH` there). See `DEPLOY.md`.
+   `PATH` there). See `DEPLOY.md` — which is **untracked**: it is matched by the global
+   `core.excludesFile`, so it exists only in a working copy and a fresh clone will not have it.
 2. **`deploy.yml` runs `git checkout -- config/reference.php` before pulling**, because the
    production server rewrites that file. Never reformat or commit a change to it — php-cs-fixer
    already excludes it.
@@ -149,8 +150,8 @@ only when relevant.
 7. **No Doctrine queries outside repositories** — not in a controller, a normalizer, an MCP tool or
    a template. And **always bind parameters**; the custom filters in `src/Filter/` build `LIKE`
    clauses from user input.
-8. **Strict typing everywhere**: `declare(strict_types=1)` at the top of every PHP file. **No file
-   in `src/` has it today** — add it to every file you touch, rather than in one sweeping change.
+8. **Strict typing everywhere**: `declare(strict_types=1)` at the top of every PHP file, and typed
+   parameters, returns and properties.
 9. **No secrets in code**: `.env` holds non-secret defaults and is committed on purpose; real values
    live in `.env.local`. Never log or echo the JWT passphrase, a token, or the admin credentials —
    **`MCP_WRITE_TOKEN` included**. The guard logs an 8-character SHA-256 fingerprint, never the
@@ -191,7 +192,6 @@ make psql            # psql shell on the dev database
 
 make jwt-keys        # generate the Lexik keypair if missing
 make admin           # hash a password for the admin account
-make import-csv      # bulk-import public/data/*.csv (ARGS="--dry-run")
 make assets          # importmap:install + asset-map:compile
 
 make php-cs-fixer    # check PHP code style (@Symfony)   / -fix to autofix

@@ -1,29 +1,21 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Tests\Api;
 
-use ApiPlatform\Symfony\Bundle\Test\ApiTestCase;
-use App\Entity\Admin;
 use App\Entity\Category;
 use App\Entity\Recipe;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
-class RecipePaginationTest extends ApiTestCase
+class RecipePaginationTest extends AuthenticatedApiTestCase
 {
-    protected static ?bool $alwaysBootKernel = false;
-
-    private EntityManagerInterface $em;
     private const API_URL = '/api/v1/recipes';
-    private string $token;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->em = static::getContainer()->get(EntityManagerInterface::class);
-        $this->em->createQuery('DELETE FROM App\Entity\Recipe')->execute();
+
         $this->seedRecipes(25);
-        $this->token = $this->getJwtToken();
     }
 
     public function testDefaultPageReturnsConfiguredItemCount(): void
@@ -86,18 +78,6 @@ class RecipePaginationTest extends ApiTestCase
         $this->assertArrayHasKey('next', $data['view']);
     }
 
-    private function apiRequest(string $method, string $url, int $expectedStatus = 200): array
-    {
-        $response = static::createClient()->request($method, $url, [
-            'auth_bearer' => $this->token,
-            'headers' => ['Accept' => 'application/ld+json'],
-        ]);
-
-        $this->assertEquals($expectedStatus, $response->getStatusCode());
-
-        return $response->toArray(false);
-    }
-
     private function seedRecipes(int $count): void
     {
         $category = new Category();
@@ -114,38 +94,5 @@ class RecipePaginationTest extends ApiTestCase
         }
 
         $this->em->flush();
-    }
-
-    private function getJwtToken(): string
-    {
-        $admin = $this->em->getRepository(Admin::class)->findOneBy(['username' => 'test_admin']);
-
-        if (!$admin) {
-            $admin = new Admin();
-            $admin->setUsername('test_admin');
-            $hasher = static::getContainer()->get(UserPasswordHasherInterface::class);
-            $admin->setPassword($hasher->hashPassword($admin, 'password'));
-            $admin->setRoles(['ROLE_ADMIN']);
-            $this->em->persist($admin);
-            $this->em->flush();
-        }
-
-        $response = static::createClient()->request('POST', '/api/login_check', [
-            'json' => ['username' => 'test_admin', 'password' => 'password'],
-        ]);
-
-        return $response->toArray()['token'];
-    }
-
-    protected function tearDown(): void
-    {
-        $this->em->createQuery('DELETE FROM App\Entity\Recipe r WHERE r.title LIKE :p')
-            ->setParameter('p', '%test%')
-            ->execute();
-        $this->em->createQuery('DELETE FROM App\Entity\Admin a WHERE a.username = :u')
-            ->setParameter('u', 'test_admin')
-            ->execute();
-        parent::tearDown();
-        $this->em->close();
     }
 }

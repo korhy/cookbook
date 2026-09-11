@@ -7,7 +7,6 @@ namespace App\Repository;
 use App\Entity\Recipe;
 use App\Enum\RecipeStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
-use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -18,40 +17,6 @@ class RecipeRepository extends ServiceEntityRepository
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, Recipe::class);
-    }
-
-    /**
-     * @return Recipe[]
-     */
-    public function getAllWithCategory(): array
-    {
-        return $this->getRecipesWithCategoryQueryBuilder()
-            ->getQuery()
-            ->getResult();
-    }
-
-    /**
-     * @return Recipe[] Returns an array of Recipe objects
-     */
-    public function findWithDurationLowerThan(int $duration): array
-    {
-        return $this->createQueryBuilder('r')
-            ->andWhere('r.duration <= :duration')
-            ->setParameter('duration', $duration)
-            ->orderBy('r.duration', 'ASC')
-            ->getQuery()
-            ->getResult();
-    }
-
-    /**
-     * Base query builder for recipes with category joined.
-     */
-    public function getRecipesWithCategoryQueryBuilder(): QueryBuilder
-    {
-        return $this->createQueryBuilder('r')
-            ->select('r', 'c')
-            ->leftJoin('r.category', 'c')
-            ->orderBy('r.id', 'DESC');
     }
 
     /**
@@ -106,45 +71,4 @@ class RecipeRepository extends ServiceEntityRepository
             ->getQuery()
             ->getOneOrNullResult();
     }
-
-    /**
-     * @return Recipe[]
-     */
-    public function findDrafts(int $limit = 50): array
-    {
-        return $this->createQueryBuilder('r')
-            ->leftJoin('r.category', 'c')
-            ->addSelect('c')
-            ->andWhere('r.status = :status')
-            ->setParameter('status', RecipeStatus::Draft)
-            ->orderBy('r.createdAt', 'DESC')
-            ->setMaxResults($limit)
-            ->getQuery()
-            ->getResult();
-    }
-
-    //    /**
-    //     * @return Recipe[] Returns an array of Recipe objects
-    //     */
-    //    public function findByExampleField($value): array
-    //    {
-    //        return $this->createQueryBuilder('r')
-    //            ->andWhere('r.exampleField = :val')
-    //            ->setParameter('val', $value)
-    //            ->orderBy('r.id', 'ASC')
-    //            ->setMaxResults(10)
-    //            ->getQuery()
-    //            ->getResult()
-    //        ;
-    //    }
-
-    //    public function findOneBySomeField($value): ?Recipe
-    //    {
-    //        return $this->createQueryBuilder('r')
-    //            ->andWhere('r.exampleField = :val')
-    //            ->setParameter('val', $value)
-    //            ->getQuery()
-    //            ->getOneOrNullResult()
-    //        ;
-    //    }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Validator;
 
 use Symfony\Component\Validator\Constraint;
@@ -8,12 +10,17 @@ use Symfony\Component\Validator\Constraint;
 final class BanWord extends Constraint
 {
     public string $message = 'This contains an illegal word: "{{ value }}".';
+
+    /**
+     * @var string[]
+     */
     public array $banWords = [];
 
-    // You can use #[HasNamedArguments] to make some constraint options required.
-    // All configurable options must be passed to the constructor.
+    /**
+     * @param string[]|null $banWords
+     * @param string[]|null $groups
+     */
     public function __construct(
-        public string $mode = 'strict',
         ?array $groups = null,
         mixed $payload = null,
         ?array $banWords = null,

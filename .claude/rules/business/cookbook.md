@@ -92,13 +92,13 @@ in the database but Radiant doesn't see it".
 (`config/routes/mcp.yaml` prefixes the bundle's `/mcp` path with `/api/v1`; the route is granted
 `PUBLIC_ACCESS` in `security.yaml`).
 
-Six tools ship today, in two families:
+The tools fall into two families:
 
 | Tool | Family | Notes |
 |---|---|---|
 | `recipe_search` | read | up to 5 published matches |
 | `recipe_get` | read | one published recipe by slug |
-| `category_list` | read | the full (small) taxonomy |
+| `category_list` | read | the taxonomy, alphabetically, up to 50 |
 | `ingredient_search` | read | up to 10 matches; use it before creating ingredients |
 | `recipe_create` | **write** | token-gated, creates a **draft** |
 | `recipe_import_from_url` | **write-gated read** | token-gated; fetches an allowlisted page, stores nothing |
@@ -118,18 +118,10 @@ part of the design. The full contract is in
 (`api.clementboudinel.fr` in prod; `localhost`, `127.0.0.1` and `cookbook_app` in dev/test). A tool
 that "does not respond" from a container is usually a host missing from that list.
 
-## CSV import
-
-`App\Command\ImportCsvCommand` (`app:import-csv`) bulk-loads `public/data/*.csv`. It is
-memory-hungry — the dev container sets `memory_limit=1024M` for that reason. Use
-`make import-csv ARGS="--dry-run"` before a real run. `public/data/` is git-ignored: the CSVs are
-not part of the repository.
-
 ## Folder conventions
 
 ```
 src/
-├── Command/        # console commands (ImportCsvCommand)
 ├── Controller/     # SecurityController + Admin/ (EasyAdmin CRUD controllers)
 ├── DTO/            # DTO/Mcp/ holds the validated MCP write inputs
 ├── Doctrine/       # Doctrine/Extension/ — API Platform query extensions (the draft filter)
