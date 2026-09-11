@@ -27,8 +27,8 @@ RUN { \
       echo "opcache.revalidate_freq=0"; \
     } > /usr/local/etc/php/conf.d/opcache-dev.ini
 
-# Dev PHP settings. The generous memory_limit is what `app:import-csv` needs when
-# it walks the recipe CSVs (the README used to prescribe -d memory_limit=1024M).
+# Dev PHP settings. The memory_limit is generous so that a heavy console command or a
+# profiler-enabled request has room; it is a dev-only image.
 RUN { \
       echo "memory_limit=1024M"; \
       echo "upload_max_filesize=12M"; \

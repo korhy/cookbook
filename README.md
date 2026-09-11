@@ -25,7 +25,6 @@ surface is treated as a contract rather than an implementation detail.
   configured they refuse every call, which is the default.
 - **Back-office** (`/admin`) — EasyAdmin 4, where all content is edited and where MCP-submitted
   drafts are reviewed and published.
-- **CSV import** — `app:import-csv` bulk-loads a whole recipe catalogue.
 
 ## API
 
@@ -193,25 +192,6 @@ make admin        # prints a password hash — copy it
 make console C="dbal:run-sql \"INSERT INTO admin (id, username, roles, password) VALUES (nextval('admin_id_seq'), 'admin', '[\\\"ROLE_ADMIN\\\"]', 'THE_HASH');\""
 ```
 
-### Import a recipe catalogue (optional)
-
-Place the CSV files in `public/data/`, then:
-
-```bash
-make import-csv ARGS="--dry-run"   # preview
-make import-csv                    # for real
-```
-
-| File | Format |
-|---|---|
-| `recipe_categories.csv` | `name,id` |
-| `ingredients.csv` | `name,id` |
-| `recipes_final.csv` | `id,recipe_title,description,id_category` |
-| `recipe_ingredients.csv` | `id_recipe,quantity,id_unit,id_ingredient` |
-| `recipe_instructions.csv` | `id_recipe,content,position` |
-
-Options: `--skip-header`, `--batch-size=50`, `--dry-run`, `--delimiter=";"`.
-
 ## Using it from Radiant
 
 Radiant runs in its own Docker stack, so it cannot reach this API on `127.0.0.1:8001` — inside a
@@ -307,7 +287,6 @@ untracked file (the global `core.excludesFile` matches it), so a fresh clone wil
 ├── migrations/         # Doctrine migrations
 ├── public/             # front controller; data/ (git-ignored) holds the import CSVs
 ├── src/
-│   ├── Command/        # app:import-csv
 │   ├── Controller/     # SecurityController + Admin/ (EasyAdmin CRUD)
 │   ├── Entity/         # Doctrine entities — and where #[ApiResource] lives
 │   ├── Enum/           # IngredientUnit

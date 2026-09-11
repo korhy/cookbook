@@ -35,19 +35,6 @@ class CategoryRepository extends ServiceEntityRepository
     }
 
     /**
-     * Exact slug lookup, used by the CSV import to leave an already-imported category alone.
-     */
-    public function findOneBySlug(string $slug): ?Category
-    {
-        return $this->createQueryBuilder('c')
-            ->andWhere('c.slug = :slug')
-            ->setParameter('slug', $slug)
-            ->setMaxResults(1)
-            ->getQuery()
-            ->getOneOrNullResult();
-    }
-
-    /**
      * The taxonomy, alphabetically, bounded.
      *
      * The limit is not defensive padding: this feeds the public, unauthenticated `category_list`

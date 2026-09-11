@@ -192,7 +192,6 @@ make psql            # psql shell on the dev database
 
 make jwt-keys        # generate the Lexik keypair if missing
 make admin           # hash a password for the admin account
-make import-csv      # bulk-import public/data/*.csv (ARGS="--dry-run")
 make assets          # importmap:install + asset-map:compile
 
 make php-cs-fixer    # check PHP code style (@Symfony)   / -fix to autofix

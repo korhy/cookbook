@@ -118,27 +118,10 @@ part of the design. The full contract is in
 (`api.clementboudinel.fr` in prod; `localhost`, `127.0.0.1` and `cookbook_app` in dev/test). A tool
 that "does not respond" from a container is usually a host missing from that list.
 
-## CSV import
-
-`App\Command\ImportCsvCommand` (`app:import-csv`) is the console around
-`App\Service\Import\RecipeCsvImporter`, which does the work; the command itself only parses
-options and renders progress. It is memory-hungry — the dev container sets `memory_limit=1024M`
-for that reason. Use `make import-csv ARGS="--dry-run"` before a real run.
-
-**All five CSVs must be present**: the command checks them up front and writes nothing if one is
-missing. `public/data/` is git-ignored, so the CSVs are not part of the repository and a working
-copy may be missing some.
-
-Two things the importer does *not* do, both deliberate and both asserted in
-`RecipeCsvImporterTest`: `id_unit` from `recipe_ingredients.csv` is read and discarded (those
-numeric ids do not map onto the `IngredientUnit` enum), and imported recipes are **published**,
-because the CSV import is a trusted authoring path.
-
 ## Folder conventions
 
 ```
 src/
-├── Command/        # console commands (ImportCsvCommand)
 ├── Controller/     # SecurityController + Admin/ (EasyAdmin CRUD controllers)
 ├── DTO/            # DTO/Mcp/ holds the validated MCP write inputs
 ├── Doctrine/       # Doctrine/Extension/ — API Platform query extensions (the draft filter)

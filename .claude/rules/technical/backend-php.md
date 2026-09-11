@@ -64,5 +64,5 @@ paths:
 ## Commands
 
 - Console commands use `#[AsCommand]` and stay thin: parse input, delegate, report.
-- Long-running commands (`app:import-csv`) must batch and clear the entity manager or they exhaust
-  memory. The existing `--batch-size` option is the pattern to follow.
+- A command that walks a large result set must flush and clear the entity manager in batches, or
+  it exhausts memory. Expose the batch size as an option rather than hard-coding it.
