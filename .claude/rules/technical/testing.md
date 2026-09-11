@@ -35,17 +35,16 @@ explicitly for that reason. **Never invoke `bin/phpunit` directly inside the con
 
 ```
 tests/
-├── Api/            # the public contract — pagination, filters, serialization, the draft
-│                   #   quarantine (AuthenticatedApiTestCase holds the JWT bootstrapping)
-├── Controller/     # SecurityControllerTest, the EasyAdmin status filter
-├── Entity/         # RecipeTest — entity behaviour
-├── EventListener/  # SlugListenerTest — prePersist and preUpdate
+├── Api/            # the /api/v1 contract — pagination, filters, serialization, the quarantine
+├── Controller/     # HTTP controllers and the EasyAdmin CRUD
+├── Entity/         # entity behaviour
+├── EventListener/  # Doctrine and kernel listeners
 ├── Mcp/Tool/       # one test per MCP tool
-├── Monolog/        # SecretRedactingProcessorTest
-├── Repository/     # the queries that hold the draft quarantine shut
-├── Service/        # the slugger, the MCP write guard, the SSRF fetcher, the CSV import
-├── Validator/      # BanWordValidatorTest
-└── fixtures/       # CSV fixtures for the import tests
+├── Monolog/        # log processors
+├── Repository/     # the queries
+├── Service/        # business logic
+├── Validator/      # custom constraints
+└── fixtures/       # fixture files for the tests that need them
 ```
 
 **Extend `App\Tests\Api\AuthenticatedApiTestCase` for anything hitting `/api/v1`.** Everything

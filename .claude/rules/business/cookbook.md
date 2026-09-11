@@ -92,7 +92,7 @@ in the database but Radiant doesn't see it".
 (`config/routes/mcp.yaml` prefixes the bundle's `/mcp` path with `/api/v1`; the route is granted
 `PUBLIC_ACCESS` in `security.yaml`).
 
-Six tools ship today, in two families:
+The tools fall into two families:
 
 | Tool | Family | Notes |
 |---|---|---|
@@ -126,9 +126,8 @@ options and renders progress. It is memory-hungry — the dev container sets `me
 for that reason. Use `make import-csv ARGS="--dry-run"` before a real run.
 
 **All five CSVs must be present**: the command checks them up front and writes nothing if one is
-missing. `public/data/` is git-ignored, so the CSVs are not part of the repository — and
-`recipe_instructions.csv` is absent from the working copy, which is why a real import currently
-refuses to start.
+missing. `public/data/` is git-ignored, so the CSVs are not part of the repository and a working
+copy may be missing some.
 
 Two things the importer does *not* do, both deliberate and both asserted in
 `RecipeCsvImporterTest`: `id_unit` from `recipe_ingredients.csv` is read and discarded (those

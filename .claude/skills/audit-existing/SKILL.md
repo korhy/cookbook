@@ -23,10 +23,10 @@ recommends; the work is then done by `/new-api-resource`, `/new-mcp-tool`, or by
    unauthenticated**. Check every tool in `src/Mcp/Tool/` for: any write (persist/flush/remove), an
    unbounded result set, a field not exposed by the REST API, an argument reaching a query
    unparameterised, a `description` that does not state the tool's limits.
-3. **Typing** ([backend-php.md](../../rules/technical/backend-php.md)) — `declare(strict_types=1)`
-   now covers all of `src/`, so the finding to look for is a **new** file that lacks it, not a
-   backlog. If several are missing, report it once with the list rather than as one finding each.
-   Also: untyped params/returns, classes that should be `final`.
+3. **Typing** ([backend-php.md](../../rules/technical/backend-php.md)) — files missing
+   `declare(strict_types=1)`. Report them as **one** finding with the list attached, never one per
+   file, ordered by risk (services and filters first, entities last). Also: untyped
+   params/returns, classes that should be `final`.
 4. **Security** ([security.md](../../rules/technical/security.md)) — the `access_control` ordering
    (only the first match applies, and `^/api` sits above nothing but the three `PUBLIC_ACCESS`
    lines); any new `/api/…` route that inherited `ROLE_ADMIN` when it should not have, or the

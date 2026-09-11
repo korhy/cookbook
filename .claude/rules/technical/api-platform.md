@@ -36,9 +36,9 @@ implements both `QueryCollectionExtensionInterface` and `QueryItemExtensionInter
 
 **It guards every resource that reaches a recipe, not just `Recipe`.** `Instruction` and
 `RecipeIngredient` are resources in their own right and carry the step text and the quantities, so
-filtering `/recipes` alone left the interesting half of a draft readable at `/instructions`. The
+filtering `/recipes` alone leaves the interesting half of a draft readable at `/instructions`. The
 `RECIPE_ASSOCIATION` map in that class says which association leads to the recipe; a resource
-absent from it is not filtered at all, so anything that later gains one has to be added there.
+absent from it is not filtered at all, so anything that gains one has to be added there.
 
 It lives in a query extension rather than in `RecipeRepository` for a reason worth knowing: **API
 Platform builds its own query builder and never calls the repository**, so a filter added there

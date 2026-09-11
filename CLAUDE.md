@@ -150,8 +150,8 @@ only when relevant.
 7. **No Doctrine queries outside repositories** — not in a controller, a normalizer, an MCP tool or
    a template. And **always bind parameters**; the custom filters in `src/Filter/` build `LIKE`
    clauses from user input.
-8. **Strict typing everywhere**: `declare(strict_types=1)` at the top of every PHP file. **Every
-   file in `src/` now carries it** — keep it that way; a new file without it is a review comment.
+8. **Strict typing everywhere**: `declare(strict_types=1)` at the top of every PHP file, and typed
+   parameters, returns and properties.
 9. **No secrets in code**: `.env` holds non-secret defaults and is committed on purpose; real values
    live in `.env.local`. Never log or echo the JWT passphrase, a token, or the admin credentials —
    **`MCP_WRITE_TOKEN` included**. The guard logs an 8-character SHA-256 fingerprint, never the
