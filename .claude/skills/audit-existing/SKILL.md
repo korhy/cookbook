@@ -42,8 +42,8 @@ recommends; the work is then done by `/new-api-resource`, `/new-mcp-tool`, or by
    `messages.fr.yaml` but missing from `messages.en.yaml` (or vice versa) renders as the raw key.
 7. **Dead code** — unused entities, repository methods nobody calls, Stimulus controllers in
    `assets/controllers/` never registered, importmap entries for packages no longer imported,
-   `public/adminer.php` (superseded by the Adminer container on `:8083`), leftover dumps and PDFs
-   at the repository root. Say what is safe to delete versus what is merely unused.
+   anything dropped into `public/` that is not an asset, leftover dumps and PDFs at the repository
+   root. Say what is safe to delete versus what is merely unused.
 8. **Duplication** — repeated entity-to-array mapping across MCP tools that should be a service;
    repeated query fragments that belong in one repository method.
 9. **Tests** ([testing.md](../../rules/technical/testing.md)) — map the existing suite

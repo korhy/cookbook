@@ -75,8 +75,8 @@ apply to it. CORS only matters for browser callers.
   real values go in `.env.local`, which is git-ignored.
 - Never log credentials, a JWT, or the `JWT_PASSPHRASE`. Never paste them into an issue, a PR body
   or a commit message.
-- `public/adminer.php` is git-ignored and superseded by the Adminer container on
-  `http://localhost:8083`. Do not commit a database tool into the docroot.
+- **Never put a database tool in the docroot** — not committed, not dropped in locally. The
+  Adminer container on `http://localhost:8083` is how you get a database UI.
 
 ## Untrusted input
 

@@ -6,7 +6,5 @@ parameters:
         - public/
         - src/
         - tests/
-    excludePaths:
-        - public/adminer.php (?)
     ignoreErrors:
         - identifier: property.unusedType
