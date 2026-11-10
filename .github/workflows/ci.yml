@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# ghcr.io: the production image registry. Coolify pulls from here.
+env:
+  REGISTRY: ghcr.io
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -68,3 +72,49 @@ jobs:
           APP_ENV: test
           DATABASE_URL: "postgresql://app:app@127.0.0.1:5432/app?serverVersion=16&charset=utf8"
           JWT_PASSPHRASE: test
+
+  # ─── Continuous deployment ────────────────────────────────────────────────
+  # Build & push the production FrankenPHP image to GHCR, tagged `latest` and the
+  # commit SHA. Runs ONLY on push to main and ONLY once `ci` is green, so a broken
+  # commit never produces a new `latest`. Coolify PULLS this image — it does not
+  # build it — see docs/deploy/coolify.md.
+  build-images:
+    name: Build & Push Image (GHCR)
+    needs: [ci]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/frankenphp
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
+
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/frankenphp/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

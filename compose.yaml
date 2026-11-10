@@ -1,6 +1,6 @@
 # Local development stack — `make up` starts the whole project.
-# Production is NOT built from this file: cookbook is deployed to OVH mutualisé
-# over SSH by .github/workflows/deploy.yml. See DEPLOY.md.
+# Production is NOT built from this file: it runs docker/frankenphp/Dockerfile.prod,
+# built by CI and pulled by Coolify. See docs/deploy/coolify.md.
 services:
   # ─── FrankenPHP (PHP 8.4 + Caddy) — the Cookbook API ────────────────────────
   app:

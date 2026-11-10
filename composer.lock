@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8e9279d3070de9c1992ee78cae93ffbb",
+    "content-hash": "91a2d76dca308d533144c6f939c36159",
     "packages": [
         {
             "name": "api-platform/core",
@@ -11051,7 +11051,8 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-02-23T15:04:35+00:00"
+            "time": "2026-02-23T15:04:35+00:00",
+            "published-time": "2026-02-23T15:04:46+00:00"
         },
         {
             "name": "phpunit/php-code-coverage",
@@ -13501,10 +13502,10 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=8.2",
+        "php": ">=8.4",
         "ext-ctype": "*",
         "ext-iconv": "*"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.11.0"
 }

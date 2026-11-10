@@ -52,8 +52,8 @@ recommends; the work is then done by `/new-api-resource`, `/new-mcp-tool`, or by
    specifically — an untested filter, an untested MCP tool, an unasserted response shape — rather
    than reporting a coverage percentage.
 10. **Stale documentation** — `README.md` and `CLAUDE.md` against reality: URLs, ports, the routes
-    and filters actually registered (`make console C="debug:router"`), the entity list, `DEPLOY.md`
-    against `.github/workflows/deploy.yml`.
+    and filters actually registered (`make console C="debug:router"`), the entity list,
+    `docs/deploy/coolify.md` against `.github/workflows/ci.yml` and `docker/frankenphp/*.prod*`.
 
 ## Method (read-only)
 

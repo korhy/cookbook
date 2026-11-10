@@ -1,5 +1,4 @@
 ![CI](https://github.com/korhy/cookbook/actions/workflows/ci.yml/badge.svg)
-![Deploy](https://github.com/korhy/cookbook/actions/workflows/deploy.yml/badge.svg)
 ![Version](https://img.shields.io/github/v/tag/korhy/cookbook?label=version)
 
 # Cookbook
@@ -264,17 +263,23 @@ entities, services and the login controller. `phpunit.dist.xml` sets `failOnDepr
 
 There is **no Twig linter and no JS/CSS linter** in this project — review those by hand.
 
-> CI runs **PHP 8.4**, and so do the dev container and the production host. `composer.json` declares
-> `>=8.2`, but nothing validates 8.2.
+> CI runs **PHP 8.4**, and so do the dev container and the production image, which pins
+> `dunglas/frankenphp:php8.4.27`. `composer.json` declares `>=8.4`.
 
 ## Deployment
 
-Production is **OVH mutualisé — not Docker.** Docker is a local development tool here only.
+Production runs on **Coolify** (VPS): an **Application** resource pulling a Docker image, and a
+**PostgreSQL 16** resource beside it, on `https://api.clementboudinel.fr`.
 
-Every green CI run on `main` triggers `deploy.yml`, which connects over SSH, pulls, installs the
-production dependencies, runs the migrations non-interactively, compiles the asset map and clears
-the cache. The full procedure and the OVH-specific traps are in **DEPLOY.md** — a local,
-untracked file (the global `core.excludesFile` matches it), so a fresh clone will not have it.
+Every green CI run on `main` builds `docker/frankenphp/Dockerfile.prod` and pushes it to
+`ghcr.io/korhy/cookbook/frankenphp:latest` (job `build-images`). **Coolify pulls that image — it
+does not build it**, and GHCR does not notify it, so shipping is a *Redeploy* click. Nothing is
+built on the server and no command is typed there: `docker/frankenphp/entrypoint.prod.sh` waits for
+the database, generates the JWT keypair if missing, rebuilds the cache and runs the migrations
+before the server accepts a request.
+
+The full procedure, the environment variables and the post-deploy checks are in
+**[docs/deploy/coolify.md](docs/deploy/coolify.md)**.
 
 ## Project structure
 
@@ -283,7 +288,8 @@ untracked file (the global `core.excludesFile` matches it), so a fresh clone wil
 ├── config/             # Symfony configuration
 │   ├── packages/       # api_platform, security, mcp, doctrine…
 │   └── routes/         # api_platform.yaml, mcp.yaml, easyadmin.yaml…
-├── docker/frankenphp/  # the local dev image (Dockerfile, Caddyfile, entrypoint)
+├── docker/frankenphp/  # dev image + the production one (*.prod) built by CI
+├── docs/deploy/        # coolify.md — the production procedure
 ├── migrations/         # Doctrine migrations
 ├── public/             # front controller; data/ (git-ignored) holds the import CSVs
 ├── src/

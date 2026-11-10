@@ -39,7 +39,8 @@ paths:
   `config/services.yaml` under a short `app.`-prefixed name to avoid collisions.
 - **Constants for options that rarely change** — a class constant beats a parameter when the value
   is inherent to the class.
-- Secrets: `.env.local` in dev and on the OVH host. Never a committed file.
+- Secrets: `.env.local` in dev, Coolify runtime environment variables in production. Never a
+  committed file.
 
 ## Business logic
 

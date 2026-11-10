@@ -1,0 +1,34 @@
+# FrankenPHP Caddyfile — PRODUCTION (shipped inside the image at
+# /etc/frankenphp/Caddyfile). Coolify's reverse proxy terminates TLS and forwards
+# traffic to :8080, so this server speaks plain HTTP and never asks for a certificate.
+{
+	auto_https off
+	frankenphp
+	order php_server before file_server
+}
+
+:8080 {
+	root * /app/public
+
+	encode zstd br gzip
+
+	log {
+		output stdout
+		format json
+	}
+
+	# Readiness probe, answered by Caddy itself rather than by Symfony. The
+	# entrypoint runs the migrations and the cache rebuild BEFORE binding :8080,
+	# so any response served here already means the application has booted.
+	# Being a Caddy route, it is also immune to the MCP Host-header allowlist —
+	# Coolify can probe the container by its internal address.
+	handle /healthz {
+		respond "OK" 200
+	}
+
+	# php_server serves the static files under public/ and routes everything else
+	# to public/index.php.
+	handle {
+		php_server
+	}
+}

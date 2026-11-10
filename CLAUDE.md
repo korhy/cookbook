@@ -52,6 +52,7 @@ only when relevant.
     ├── security.md                # JWT, the access_control ordering, CORS, secrets
     ├── easyadmin.md               # CRUD controllers, the dashboard menu, uploads, join entities
     ├── naming.md                  # English identifiers; French through the translation catalogue
+    ├── deployment.md              # The FrankenPHP prod image, the GHCR build, Coolify, boot migrations
     ├── linting.md                 # Pre-CI gate: php-cs-fixer + PHPStan level 5
     └── testing.md                 # PHPUnit on PostgreSQL, the app_test database, the env trap
 ```
@@ -80,8 +81,8 @@ only when relevant.
 
 ## 🔧 Tech stack
 
-- **PHP `>=8.2` declared, but 8.4 is what runs** — CI, the OVH production host and the dev container
-  are all on 8.4. Nothing validates 8.2; treat 8.4 as the target.
+- **PHP 8.4** — declared (`>=8.4`), run by CI, by the dev container and by the production image,
+  which pins `dunglas/frankenphp:php8.4.27`.
 - **Symfony 7.4** (pinned via Flex `extra.symfony.require`)
 - **API Platform 4.2** — `#[ApiResource]` on the entities, versioned under `/api/v1`,
   **read-only** (`GetCollection` + `Get` only)
@@ -98,7 +99,8 @@ only when relevant.
   `LocaleListener` reading `Accept-Language` and defaulting to `fr`
 - **`symfony/rate-limiter`** — three sliding windows (`mcp_write`, `mcp_import`,
   `mcp_write_auth`) behind the MCP write guard, on the filesystem-backed `cache.rate_limiter`
-  pool. Note the limits reset when `var/cache` is cleared on deploy
+  pool. Note the limits reset whenever `var/cache` goes — which in production is every
+  container start, since `var/` is not a persistent volume
 - **Linters**: php-cs-fixer (`@Symfony`) and **PHPStan level 5**, both gated in CI. There is **no
   Twig linter and no JS/CSS linter** here
 - **Tests**: PHPUnit 12 on PostgreSQL, with `failOnDeprecation` / `failOnNotice` / `failOnWarning`
@@ -106,13 +108,14 @@ only when relevant.
 
 ### Four operational traps worth knowing before you change anything
 
-1. **Production is OVH mutualisé — no Docker.** Docker is a *local development* tool in this
-   project only. `deploy.yml` pulls over SSH and runs `php composer.phar` (Composer is not in the
-   `PATH` there). See `DEPLOY.md` — which is **untracked**: it is matched by the global
-   `core.excludesFile`, so it exists only in a working copy and a fresh clone will not have it.
-2. **`deploy.yml` runs `git checkout -- config/reference.php` before pulling**, because the
-   production server rewrites that file. Never reformat or commit a change to it — php-cs-fixer
-   already excludes it.
+1. **Production is a container, and migrations run unattended at every boot.** Coolify pulls the
+   image CI builds and starts it; `docker/frankenphp/entrypoint.prod.sh` runs the cache rebuild
+   and `doctrine:migrations:migrate` before binding `:8080`. A migration therefore lands on
+   production with nobody watching, on every (re)start — it must be non-interactive and
+   backward-safe. See [docs/deploy/coolify.md](docs/deploy/coolify.md).
+2. **`cache:warmup` needs `--no-optional-warmers` in `prod`.** A plain warmup aborts with
+   *"DoctrineMetadataCacheWarmer must load metadata first"*. The entrypoint passes the flag; do
+   not "simplify" it away.
 3. **Container environment variables beat `.env.test`.** The app container exports `APP_ENV=dev` and
    a dev `DATABASE_URL` as real env vars, so `bin/phpunit` run directly inside it boots in `dev`
    against the **development database**. Always go through `make phpunit`, which passes
@@ -160,7 +163,7 @@ only when relevant.
     `translations/messages.fr.yaml` — and every new key must be added to **both** catalogues.
 11. **Never set a slug by hand** — `SluggerService` via `SlugListener` owns it.
 12. **Read the SQL of a generated migration before committing it.** Production migrations run
-    non-interactively over SSH during deploy.
+    non-interactively at container boot, on every start.
 13. **Conventional Commits are load-bearing**: the release tooling parses the subject to tag semver
     (`feat:` → minor, `fix:` → patch, `type!:` → major). Write it deliberately.
 14. **A change is not done until `make lint` passes** — php-cs-fixer and PHPStan, the same two gates
@@ -213,5 +216,10 @@ running. When Cookbook is down, Radiant degrades through its `CookbookUnavailabl
 
 ### Deployment
 
-Production is **OVH mutualisé, deployed over SSH by `.github/workflows/deploy.yml` — not Docker**.
-The full procedure, including the OVH-specific traps, is in [DEPLOY.md](DEPLOY.md).
+Production runs on **Coolify** (VPS): an **Application** resource pulling
+`ghcr.io/korhy/cookbook/frankenphp:latest` — built and pushed by `ci.yml`'s `build-images` job —
+and a **PostgreSQL 16** resource beside it. Nothing is built on the server and no command is typed
+there; `docker/frankenphp/entrypoint.prod.sh` prepares the app at boot.
+
+The full procedure, the environment variables and the post-deploy checks are in
+**[docs/deploy/coolify.md](docs/deploy/coolify.md)**.
