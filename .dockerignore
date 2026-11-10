@@ -1,16 +1,40 @@
-# Keeps the build context small for `docker compose build`.
-# The dev image only COPYs docker/frankenphp/dev-entrypoint.sh; everything else is
-# bind-mounted at runtime, so vendor/ and the caches never need to be in the context.
-# Do NOT exclude docker/ — the Dockerfile copies the entrypoint from there.
+# Keeps the build context small, and keeps host-only files out of the production
+# image — docker/frankenphp/Dockerfile.prod does `COPY . .`, so anything not
+# excluded here lands in a layer and ships.
+# Do NOT exclude docker/ — both Dockerfiles copy their entrypoint from there.
 .git
 .github
 .idea
 .vscode
+.claude
+.DS_Store
+
+# Host secrets. The production image must never bake these: its configuration comes
+# from Coolify's environment variables at runtime.
+.env.local
+.env.*.local
+
+# Rebuilt inside the image (Dockerfile.prod runs composer install and the three
+# asset commands), so the host's copies would only be stale weight.
 vendor
+public/assets
+assets/vendor
+public/bundles
+
+# Runtime state, rebuilt at boot by entrypoint.prod.sh.
 var/cache
 var/log
 var/sessions
-public/data
-public/images
+var/share
+
+# Persistent volumes in production, not image content: Vich uploads and the Lexik
+# keypair are mounted over these paths by Coolify.
 config/jwt
+public/images
+
+# Development-only, and dead weight in an image.
+tests
+docs
+public/data
+.php-cs-fixer.cache
 *.pdf

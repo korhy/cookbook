@@ -8,6 +8,9 @@
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
     default_admin_email: admin@clementboudinel.fr
+    # Production Host allowlist for the MCP endpoint, overridable through MCP_ALLOWED_HOSTS —
+    # see config/packages/mcp.yaml. A string, not a list: the csv env processor splits it.
+    default_mcp_allowed_hosts: 'api.clementboudinel.fr'
     admin_email: "%env(string:default:default_admin_email:ADMIN_EMAIL)%"
 
 services:

@@ -1,10 +1,10 @@
 # ─── FrankenPHP (PHP 8.4 + Caddy) — LOCAL DEVELOPMENT image ───────────────────
 # FrankenPHP bundles Caddy + PHP in a single container (no nginx / php-fpm).
-# This image is for `make up` only. Production is NOT built from it: cookbook is
-# deployed to OVH mutualisé over SSH by .github/workflows/deploy.yml — see DEPLOY.md.
+# This image is for `make up` only. Production is built from Dockerfile.prod in this
+# same directory — see docs/deploy/coolify.md.
 #
 # PHP 8.4 on purpose: it is what CI runs (.github/workflows/ci.yml) and what the
-# OVH host serves. composer.json declares >=8.2, but nothing is validated on 8.2.
+# production image pins. The floating tag is fine here; Dockerfile.prod pins the patch.
 FROM dunglas/frankenphp:php8.4
 
 # install-php-extensions ships with the FrankenPHP image and compiles the right

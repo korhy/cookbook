@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1
+# ─── FrankenPHP (PHP 8.4 + Caddy) — PRODUCTION image ──────────────────────────
+# Built and pushed to GHCR by .github/workflows/ci.yml (job build-images), then
+# pulled as-is by Coolify — see docs/deploy/coolify.md. Coolify does NOT build it.
+#
+# Single stage on purpose. There is no Node stage because this project uses
+# AssetMapper (no package.json, no npm, no build step), and no separate Composer
+# stage because the runtime image is the only place where PHP 8.4 and the right
+# extensions are present — installing vendor/ anywhere else would mean
+# --ignore-platform-reqs, i.e. installing without verifying what it needs.
+#
+# The patch version is pinned: a production image must not drift under a floating
+# `php8.4` tag the way the development image does.
+FROM dunglas/frankenphp:php8.4.27
+
+# unzip: Composer needs it (or ext-zip) to unpack distributions. Installed via apt
+# because the extensions below are not available until the next layer.
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# install-php-extensions ships with the FrankenPHP image and builds the right
+# extensions for the current architecture (amd64 / arm64).
+# Same list as docker/frankenphp/Dockerfile — dev and prod are kept in sync.
+# gd: VichUploader processes the recipe thumbnails. pdo_pgsql: PostgreSQL, never MySQL.
+RUN install-php-extensions \
+    pdo_pgsql \
+    intl \
+    zip \
+    opcache \
+    mbstring \
+    gd
+
+# Production OPcache: cache compiled files and never revalidate — the image is
+# immutable, so a timestamp check would only cost a stat() per include.
+RUN { \
+      echo "opcache.enable=1"; \
+      echo "opcache.enable_cli=0"; \
+      echo "opcache.validate_timestamps=0"; \
+      echo "opcache.max_accelerated_files=20000"; \
+      echo "opcache.memory_consumption=256"; \
+      echo "opcache.interned_strings_buffer=16"; \
+    } > /usr/local/etc/php/conf.d/opcache-prod.ini
+
+# Production PHP settings. `error_log=/dev/stderr` is the load-bearing line: with no
+# explicit destination PHP writes to the SAPI default, which FrankenPHP does not
+# surface on the container's stream — fatals would vanish instead of reaching
+# `docker logs` and the Coolify log panel.
+RUN { \
+      echo "display_errors=Off"; \
+      echo "display_startup_errors=Off"; \
+      echo "log_errors=On"; \
+      echo "error_log=/dev/stderr"; \
+      echo "allow_url_include=Off"; \
+      echo "max_execution_time=30"; \
+      echo "session.use_strict_mode=On"; \
+      echo "realpath_cache_size=4096K"; \
+      echo "realpath_cache_ttl=3600"; \
+      echo "zend.detect_unicode=Off"; \
+      echo "upload_max_filesize=12M"; \
+      echo "post_max_size=13M"; \
+      echo "date.timezone=Europe/Paris"; \
+    } > /usr/local/etc/php/conf.d/prod.ini
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+ENV APP_ENV=prod \
+    COMPOSER_ALLOW_SUPERUSER=1
+
+# Source first, dependencies after: .dockerignore keeps vendor/ out of the context,
+# so this guarantees the image's vendor/ is resolved from composer.lock here rather
+# than inherited from whatever the host happened to have.
+COPY . .
+
+# --no-scripts is not optional: composer.json's first auto-script is a bare
+# `cache:clear`, which at build time would warm a container against a DATABASE_URL
+# that does not exist yet. The entrypoint rebuilds the cache at boot instead.
+RUN composer install --no-dev --no-scripts --optimize-autoloader --no-interaction \
+    && composer dump-autoload --no-dev --classmap-authoritative --no-scripts
+
+# The three asset commands, run explicitly because --no-scripts skipped them. All
+# three write to gitignored directories that are therefore absent from a fresh
+# checkout, and skipping any one of them ships a back-office with no CSS:
+#   assets:install    → public/bundles/   (EasyAdmin's published CSS/JS)
+#   importmap:install → assets/vendor/    (the importmap's third-party JS)
+#   asset-map:compile → public/assets/    (the compiled, versioned asset map)
+RUN php bin/console assets:install public --no-interaction \
+    && php bin/console importmap:install \
+    && php bin/console asset-map:compile
+
+# Ship the production Caddyfile + boot entrypoint inside the image.
+COPY docker/frankenphp/Caddyfile.prod /etc/frankenphp/Caddyfile
+COPY docker/frankenphp/entrypoint.prod.sh /usr/local/bin/docker-entrypoint
+RUN chmod +x /usr/local/bin/docker-entrypoint
+
+# Create the mount points so the Coolify volumes attach to directories that already
+# exist with the right owner. public/images/recipes_thumbnails holds Vich uploads and
+# config/jwt the Lexik keypair — both are volumes, neither is image content.
+RUN mkdir -p var/cache var/log var/sessions public/images/recipes_thumbnails config/jwt \
+    && chown -R www-data:www-data var public/images/recipes_thumbnails config/jwt
+
+# No Docker-level HEALTHCHECK: the base image ships no curl. Coolify probes /healthz
+# (docker/frankenphp/Caddyfile.prod) over HTTP from outside the container instead.
+
+ENTRYPOINT ["docker-entrypoint"]
+EXPOSE 8080

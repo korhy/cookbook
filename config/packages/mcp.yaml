@@ -11,7 +11,12 @@ mcp:
 
     http:
         path: /mcp
-        allowed_hosts: ['api.clementboudinel.fr']
+        # DNS-rebinding protection: the Host header must be one of these. The default is the
+        # production domain (parameter in config/services.yaml), so an unset MCP_ALLOWED_HOSTS
+        # is the correct production configuration. The variable exists to reach the app on
+        # another hostname — the Coolify-generated domain before the DNS cutover — without
+        # editing this file; set it to a comma-separated list, and remove it afterwards.
+        allowed_hosts: '%env(csv:default:default_mcp_allowed_hosts:MCP_ALLOWED_HOSTS)%'
         session:
             store: file
             directory: '%kernel.cache_dir%/mcp-sessions'

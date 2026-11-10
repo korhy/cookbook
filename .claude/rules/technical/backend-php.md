@@ -12,9 +12,8 @@ paths:
 
 ## Base
 
-- **PHP 8.4 is what actually runs.** `composer.json` declares `>=8.2`, but CI
-  (`.github/workflows/ci.yml`), the OVH production host and the dev container all run **8.4**.
-  Nothing validates 8.2, so treat 8.4 as the target and do not trust the `>=8.2` floor.
+- **PHP 8.4 everywhere.** `composer.json` declares `>=8.4`, CI runs 8.4, the dev container runs
+  8.4 and the production image pins `dunglas/frankenphp:php8.4.27`.
 - `declare(strict_types=1)` at the top of **every** PHP file. Weak mode coerces silently: an
   object with `__toString()` handed to a `string` parameter is accepted, and the same call is a
   `TypeError` under strict types. That class of bug stays invisible until the declaration is
@@ -48,8 +47,9 @@ paths:
   (`TitleFilter`, `IngredientFilter`) go through `QueryNameGeneratorInterface` to generate a
   collision-free parameter name — copy that pattern in any new filter.
 - Migrations are generated (`make db-migration`), reviewed by hand, then applied (`make db-migrate`).
-  **Read the generated SQL before committing it**: production migrations run non-interactively over
-  SSH during deploy, so a destructive statement lands unattended.
+  **Read the generated SQL before committing it**: production migrations run non-interactively at
+  container boot, on every start, so an irreversible statement lands unattended. See
+  [deployment.md](deployment.md).
 - `make db-validate` must pass before a mapping change is considered done.
 
 ## Structure

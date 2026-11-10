@@ -2,6 +2,15 @@
 framework:
     secret: '%env(APP_SECRET)%'
 
+    # Production runs behind the Coolify reverse proxy (itself behind Cloudflare), so the
+    # client address and scheme only reach the app in X-Forwarded-* headers. Without this,
+    # Symfony sees the proxy's private address over plain HTTP and
+    # App\Serializer\RecipeNormalizer builds thumbnail URLs on `http://` — mixed content
+    # in Radiant, and broken images. `private_ranges` is the value set in Coolify; unset
+    # (dev, test, CLI) it resolves to null and nothing is trusted.
+    trusted_proxies: '%env(default::TRUSTED_PROXIES)%'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-proto', 'x-forwarded-port', 'x-forwarded-host']
+
     # Note that the session will be started ONLY if you read or write from it.
     session: true
 

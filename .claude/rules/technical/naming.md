@@ -56,7 +56,7 @@ addresses a developer, so the French exception never applies to it.
 
 Keep a comment only when it carries what the code cannot show:
 
-- an external constraint — `OVH runs PHP as FastCGI: no php_flag in .htaccess`;
+- an external constraint — `error_log=/dev/stderr: FrankenPHP does not surface the SAPI default`;
 - a decision and the option it rejects — `bound parameter, not concatenation: the value is a raw
   query string`;
 - a trap that costs a debugging session — `container env vars beat .env.test, so APP_ENV must be

@@ -97,7 +97,7 @@ make db-migrate      # apply
 make db-validate     # mapping matches the schema
 ```
 
-Production migrations run **non-interactively over SSH** during deploy, so review the SQL: a
+Production migrations run **non-interactively at container boot** on every start, so review the SQL: a
 destructive statement lands unattended.
 
 ## 6. EasyAdmin
