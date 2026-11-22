@@ -78,8 +78,15 @@ d'exposer `:8080` :
 5. `doctrine:migrations:migrate --no-interaction --allow-no-migration`, suivi d'un
    `migrations:status` imprimé dans les logs.
 
-Chaque étape est débrayable par variable : `APP_FIX_PERMISSIONS=0`, `APP_GENERATE_JWT_KEYS=0`,
-`APP_CLEAR_CACHE=0`, `APP_RUN_MIGRATIONS=0`.
+Chaque étape est débrayable par variable : `APP_WAIT_FOR_DATABASE=0`,
+`APP_FIX_PERMISSIONS=0`, `APP_GENERATE_JWT_KEYS=0`, `APP_CLEAR_CACHE=0`, `APP_RUN_MIGRATIONS=0`.
+
+> **Diagnostiquer un échec de connexion.** L'attente borne le boot : après 30 tentatives, le
+> conteneur s'arrête en affichant **l'erreur Postgres réelle**, qui distingue un hôte injoignable
+> (`could not translate host name`) d'une authentification refusée
+> (`password authentication failed`) ou d'un droit manquant. Pour obtenir un shell sur un conteneur
+> qui ne démarre pas, mettre `APP_WAIT_FOR_DATABASE=0` : l'application monte malgré tout, et la
+> commande se rejoue à la main depuis le terminal Coolify.
 
 **Un premier déploiement ne demande donc aucune commande à taper sur le VPS.**
 

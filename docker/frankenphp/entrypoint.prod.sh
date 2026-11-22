@@ -39,19 +39,34 @@ DB_ATTEMPTS=30
 DB_RETRY_SECONDS=2
 
 wait_for_database() {
+	# The one step that can hard-fail the boot, so it needs an escape hatch like the others:
+	# with APP_WAIT_FOR_DATABASE=0 the container comes up anyway, which is what makes it
+	# possible to open a shell on it and diagnose the connection by hand.
+	if [ "${APP_WAIT_FOR_DATABASE:-1}" != "1" ]; then
+		log "Skipping the database wait (APP_WAIT_FOR_DATABASE=0)"
+		return 0
+	fi
+
 	attempt=1
+	last_error=''
 	while [ "${attempt}" -le "${DB_ATTEMPTS}" ]; do
-		if php bin/console doctrine:database:create --if-not-exists --env=prod --no-debug 2>/dev/null; then
+		if last_error=$(php bin/console doctrine:database:create --if-not-exists --env=prod --no-debug 2>&1); then
 			log "Database reachable"
 			return 0
 		fi
 
-		log "Database unreachable (attempt ${attempt}/${DB_ATTEMPTS}) — retrying in ${DB_RETRY_SECONDS}s"
+		log "Database not ready (attempt ${attempt}/${DB_ATTEMPTS}) — retrying in ${DB_RETRY_SECONDS}s"
 		attempt=$((attempt + 1))
 		sleep "${DB_RETRY_SECONDS}"
 	done
 
-	log "Database still unreachable after ${DB_ATTEMPTS} attempts — check DATABASE_URL"
+	# Print what the connection actually returned. Discarding it (the previous behaviour) made
+	# every cause look identical: an unresolvable host, a refused password and a missing
+	# privilege all surfaced as the same "unreachable" line and sent the reader after the
+	# wrong thing.
+	log "Database not ready after ${DB_ATTEMPTS} attempts. The last error follows; it is what"
+	log "tells an unreachable host from a refused authentication or a missing privilege."
+	printf '%s\n' "${last_error}" >&2
 	return 1
 }
 

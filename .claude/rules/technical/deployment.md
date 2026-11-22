@@ -82,8 +82,13 @@ Runs on **every** container start, before binding `:8080`:
 4. `cache:clear --no-warmup`, then `cache:warmup --no-optional-warmers`.
 5. `doctrine:migrations:migrate --no-interaction --allow-no-migration`, then `migrations:status`.
 
-Each step has an off switch (`APP_FIX_PERMISSIONS`, `APP_GENERATE_JWT_KEYS`, `APP_CLEAR_CACHE`,
-`APP_RUN_MIGRATIONS`), all defaulting to on.
+Each step has an off switch (`APP_WAIT_FOR_DATABASE`, `APP_FIX_PERMISSIONS`,
+`APP_GENERATE_JWT_KEYS`, `APP_CLEAR_CACHE`, `APP_RUN_MIGRATIONS`), all defaulting to on.
+
+Step 2 bounds the boot, and on failure it prints **the error the connection actually returned** —
+an unresolvable host, a refused password and a missing privilege are different problems and must not
+look alike. `APP_WAIT_FOR_DATABASE=0` brings the container up regardless, which is the only way to
+get a shell on an instance that cannot reach its database.
 
 **`--no-optional-warmers` is load-bearing.** A plain `cache:warmup --env=prod` aborts with
 *"DoctrineMetadataCacheWarmer must load metadata first, check priority of your warmers"* — verified
