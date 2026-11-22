@@ -158,6 +158,20 @@ jobs:
                 echo "all resolved", PHP_EOL;
               '
 
+      # The audit above only sees classes src/ names in a `use`. It is blind to a
+      # dependency resolved inside another package — DomCrawler::filter() needs
+      # symfony/css-selector, which src/ never imports, and that shipped broken too.
+      # So exercise the path instead of inspecting it.
+      - name: The import path must work without dev dependencies
+        run: |
+          docker run --rm --entrypoint php cookbook-prod:audit -r '
+            require "/app/vendor/autoload.php";
+            $c = new Symfony\Component\DomCrawler\Crawler("<html><body><script type=\"application/ld+json\">{}</script></body></html>");
+            $n = $c->filter("script[type=\"application/ld+json\"]")->count();
+            if ($n !== 1) { echo "CSS filtering returned $n, expected 1", PHP_EOL; exit(1); }
+            echo "DomCrawler CSS filtering works in --no-dev", PHP_EOL;
+          '
+
       # Same build, now from cache, so this only uploads layers.
       - name: Push
         uses: docker/build-push-action@v6
