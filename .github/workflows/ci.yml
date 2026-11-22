@@ -108,7 +108,58 @@ jobs:
             type=raw,value=latest
             type=sha,prefix=
 
-      - name: Build & Push
+      # Built locally first so the audit below can run against the real production
+      # image, before anything is published.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/frankenphp/Dockerfile.prod
+          load: true
+          tags: cookbook-prod:audit
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The gate the test suite cannot be: PHPUnit runs with dev dependencies
+      # installed, so a class from require-dev used in src/ passes every test and
+      # only fails in production, at runtime. That is exactly how DomCrawler broke
+      # recipe_import_from_url. Here each class src/ imports must resolve against
+      # the --no-dev autoloader, or `latest` is never published.
+      #
+      # Aliased imports are skipped: `use Doctrine\ORM\Mapping as ORM;` imports a
+      # namespace, not a class, so it can never resolve as one. That costs a little
+      # coverage and buys no false failures — the alternative is a check nobody
+      # trusts. 234 of 246 imports are covered today.
+      - name: Every class src/ imports must resolve without dev dependencies
+        run: |
+          grep -rhE '^use ' src/ \
+            | grep -vE '^use (function|const) ' \
+            | grep -v ' as ' \
+            | sed -E 's/^use //; s/;$//' \
+            | sort -u \
+            | docker run --rm -i --entrypoint php cookbook-prod:audit -r '
+                require "/app/vendor/autoload.php";
+                $missing = [];
+                $n = 0;
+                while (($l = fgets(STDIN)) !== false) {
+                    $l = trim($l);
+                    if ($l === "") continue;
+                    $n++;
+                    if (!class_exists($l) && !interface_exists($l) && !trait_exists($l) && !enum_exists($l)) {
+                        $missing[] = $l;
+                    }
+                }
+                printf("%d classes checked against the production autoloader%s", $n, PHP_EOL);
+                if ($missing !== []) {
+                    echo "Missing in --no-dev — move the package to composer require:", PHP_EOL;
+                    foreach ($missing as $m) { echo "  - ", $m, PHP_EOL; }
+                    exit(1);
+                }
+                echo "all resolved", PHP_EOL;
+              '
+
+      # Same build, now from cache, so this only uploads layers.
+      - name: Push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -117,4 +168,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
