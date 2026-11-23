@@ -97,15 +97,28 @@ Chaque étape est débrayable par variable : `APP_WAIT_FOR_DATABASE=0`,
 
 ## Stockage persistant
 
-Un conteneur est reconstruit à chaque déploiement : sans volume, ces deux chemins sont effacés.
-Montés dans Coolify (**Application → Storages → Volume Mount**) :
+Un conteneur est reconstruit à chaque déploiement : sans volume, ces trois chemins sont effacés.
+Montés dans Coolify (**Configuration → Persistent Storage → Add → Volume Mount**) :
 
 | Chemin dans le conteneur | Contenu |
 |---|---|
 | `/app/public/images/recipes_thumbnails` | Miniatures de recettes déposées via EasyAdmin (VichUploader) |
 | `/app/config/jwt` | La paire de clés Lexik générée au premier boot |
+| `/app/var/log` | **La piste d'audit des écritures MCP** (`mcp_audit.log`) |
 
-`var/` n'est **pas** monté : cache, logs et sessions sont reconstruits à chaque boot. Trois
+> **Le troisième volume n'est pas optionnel.** `App\Service\Mcp\McpWriteGuard` écrit chaque
+> tentative d'écriture MCP, autorisée ou refusée, dans `var/log/mcp_audit.log`. Sans volume, le
+> fichier est effacé à chaque redéploiement. L'entrypoint `chown` `var/` récursivement, donc un
+> volume neuf appartenant à `root` est repris sans intervention.
+
+À faire sur chacun des trois :
+
+- Ajouter une sauvegarde planifiée dans **Backups → Storage backups → Add**.
+- Laisser *Delete Unused Volumes* désactivé dans le nettoyage.
+- Ne pas renommer un Storage après coup : Coolify crée un volume vide sous le nouveau nom et les
+  données restent dans l'ancien.
+
+`var/cache` et `var/sessions` ne sont **pas** montés et sont reconstruits à chaque boot. Trois
 conséquences assumées :
 
 - les sessions d'administration sont perdues au redéploiement (il faut se reconnecter) ;

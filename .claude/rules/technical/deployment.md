@@ -102,17 +102,19 @@ inside this container. Under `set -e` that fails the boot. The rest of the cache
    releases. Read the generated SQL before committing it.
 2. **A green deploy does not prove the migration ran.** Check the `migrations:status` the entrypoint
    prints: `New` must be **0**.
-3. **Uploads and JWT keys live on persistent volumes**, not in the image:
-   `/app/public/images/recipes_thumbnails` (Vich) and `/app/config/jwt` (Lexik). A container is
-   rebuilt on every deploy; without the volumes a redeploy wipes them. Never write code that
-   assumes a clean rebuild.
+3. **Uploads, JWT keys and the MCP audit trail live on persistent volumes**, not in the image:
+   `/app/public/images/recipes_thumbnails` (Vich), `/app/config/jwt` (Lexik) and `/app/var/log`
+   (`mcp_audit.log`). A container is rebuilt on every deploy; without the volumes a redeploy wipes
+   them. Never write code that assumes a clean rebuild.
 4. **Never drop a file into the thumbnails directory by hand** (terminal, `docker cp`, Coolify's
    file browser) to "fix" a missing upload. Vich stores the **exact filename** in
    `Recipe::$thumbnail`; a file on disk under any other name is invisible and 404s. Upload through
    EasyAdmin, which keeps the filename and the row in sync.
-5. **`var/` is not persisted.** Admin sessions, MCP HTTP sessions and the three MCP rate-limiter
-   windows (`cache.rate_limiter` lives in `var/cache`) all reset on redeploy. Accepted — but never
-   put anything in `var/` that must survive.
+5. **`var/cache` and `var/sessions` are not persisted.** Admin sessions, MCP HTTP sessions and the
+   three MCP rate-limiter windows (`cache.rate_limiter` lives in `var/cache`) all reset on
+   redeploy. Accepted. **`var/log` is the exception** — it is mounted, because the MCP audit trail
+   is written there and has to outlive the container. Anything else that must survive needs a
+   volume of its own, not a path under `var/cache`.
 6. **Secrets are Coolify runtime environment variables**, never inlined in the image or a workflow.
    `TRUSTED_PROXIES=private_ranges` is mandatory, not cosmetic: see
    [security.md](security.md).
