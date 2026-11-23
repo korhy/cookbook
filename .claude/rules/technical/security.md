@@ -75,6 +75,13 @@ apply to it. CORS only matters for browser callers.
   real values go in `.env.local`, which is git-ignored.
 - Never log credentials, a JWT, or the `JWT_PASSPHRASE`. Never paste them into an issue, a PR body
   or a commit message.
+- **`.claude/settings.json` denies the file tools** (`Read`, `Edit`, `Write`) on `.env.local`,
+  `.env.*.local` and `config/jwt/**`, so an assistant cannot pull a token or a private key into a
+  transcript by accident — which is exactly how `MCP_WRITE_TOKEN` once ended up in one. It is a
+  guard against accidents, **not a boundary**: the rules do not cover `Bash`, and
+  `cat .env.local` or `docker exec cookbook_app env` walks straight past them. What actually
+  protects the secret is the rule above — it has no reason to enter a conversation at all. One
+  practical consequence: adding a variable to `.env.local` is now a manual edit, by hand.
 - **Never put a database tool in the docroot** — not committed, not dropped in locally. The
   Adminer container on `http://localhost:8083` is how you get a database UI.
 
