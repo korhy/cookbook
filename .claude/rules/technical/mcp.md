@@ -152,9 +152,14 @@ fingerprint), `mcp_import` (30/hour), `mcp_write_auth` (10 failures/15 min, **pe
 only on failure so ordinary use never locks a client out). They sit on the filesystem-backed
 `cache.rate_limiter` pool, so clearing `var/cache` on deploy resets the windows.
 
-The audit trail has its own Monolog channel, `mcp_audit`, writing to `var/log/mcp_audit.log`. It is
-deliberately **outside** the prod `fingers_crossed` handler: that one buffers and discards anything
-below `error`, which would silently drop every authorization record.
+The audit trail has its own Monolog channel, `mcp_audit`, declared with
+`#[WithMonologChannel('mcp_audit')]` on the guard and writing to `var/log/mcp_audit.log` in dev and
+prod alike. It is deliberately **outside** the prod `fingers_crossed` handler: that one buffers and
+discards anything below `error`, which would silently drop every authorization record.
+
+**It is a file, and `/app/var/log` is a persistent volume in production** — the trail has to outlive
+the container. Do not move it to `php://stderr`; the prod error handlers are there, and the
+difference is intentional.
 
 ## Testing
 
