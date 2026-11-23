@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
+      "Read(./config/jwt/**)",
+      "Edit(./.env.local)",
+      "Edit(./.env.*.local)",
+      "Edit(./config/jwt/**)",
+      "Write(./.env.local)",
+      "Write(./.env.*.local)",
+      "Write(./config/jwt/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/php-cs-fixer-edited-file.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

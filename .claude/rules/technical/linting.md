@@ -44,6 +44,24 @@ Level **5**, over `bin/`, `config/`, `public/`, `src/` and `tests/` (`phpstan.di
 - PHPDoc array shapes are load-bearing at level 5 — that is why the MCP tools carry
   `@return array{recipes: array<int, array{…}>}`. Keep writing them.
 
+## The editor-time hook
+
+`.claude/settings.json` wires a `PostToolUse` hook on `Edit`/`Write`:
+`.claude/hooks/php-cs-fixer-edited-file.sh` runs php-cs-fixer on **the one file just edited**,
+inside the container, the moment it is written.
+
+- `src/` and `tests/` only, and it passes **`--path-mode=intersection`** so the finder in
+  `.php-cs-fixer.dist.php` still applies. Without that flag an explicit path argument
+  **overrides** the finder, and a migration would get reformatted — the one thing the exclusions
+  above exist to prevent. Do not drop it.
+- It prepends `/opt/homebrew/bin` and `/usr/local/bin` to `PATH`: a hook does not inherit an
+  interactive shell's environment, and neither `jq` nor `docker` is on the default path.
+- **Style only.** It changes nothing about what *done* means — `make lint` is still the gate and
+  CI still runs php-cs-fixer `--dry-run`. It removes a round trip, not a step.
+- With the stack down, `docker exec` fails and the hook reports it (exit 2, which surfaces to
+  Claude rather than to you). The edit is never reverted; the file simply stays unformatted until
+  the next `make php-cs-fixer-fix`.
+
 ## What is *not* gated
 
 There is **no Twig linter and no JS/CSS linter** in this project (unlike gestion-bachelor and
@@ -52,7 +70,8 @@ automated style gate — review them by hand and load the page.
 
 ## Order of operations
 
-1. `make php-cs-fixer-fix` — mechanical style.
+1. `make php-cs-fixer-fix` — mechanical style. The hook above has already done this for every
+   file edited through Claude Code, so this is the sweep over everything else.
 2. `make phpstan` — types.
 3. `make db-test && make phpunit` — behaviour.
 4. Only then propose a commit.
