@@ -91,7 +91,7 @@ only when relevant.
 - **LexikJWTAuthenticationBundle** for API auth · **NelmioCorsBundle** for browser callers
 - **EasyAdmin 4** for the back-office · **VichUploader** for recipe thumbnails ·
   **KnpPaginator** · **Symfony UX Autocomplete** for the ingredient picker
-- **`symfony/mcp-bundle` 0.12** — a public MCP server at `/api/v1/mcp`: read tools are
+- **`symfony/mcp-bundle` 1.0** (a beta on the 1.0 line) — a public MCP server at `/api/v1/mcp`: read tools are
   unauthenticated, the two write-adjacent tools are token-gated and produce drafts
 - **AssetMapper + importmap** — **no `package.json`, no `node_modules`, no build step.** The
   opposite of Radiant; do not import a Webpack habit here
