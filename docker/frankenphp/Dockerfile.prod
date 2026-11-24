@@ -94,10 +94,11 @@ COPY docker/frankenphp/entrypoint.prod.sh /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint
 
 # Create the mount points so the Coolify volumes attach to directories that already
-# exist with the right owner. public/images/recipes_thumbnails holds Vich uploads and
-# config/jwt the Lexik keypair — both are volumes, neither is image content.
-RUN mkdir -p var/cache var/log var/sessions public/images/recipes_thumbnails config/jwt \
-    && chown -R www-data:www-data var public/images/recipes_thumbnails config/jwt
+# exist with the right owner. public/images/recipes_thumbnails holds Vich uploads,
+# config/jwt the Lexik keypair and config/oauth the authorization server's own — all
+# three are volumes, none is image content (see .dockerignore).
+RUN mkdir -p var/cache var/log var/sessions public/images/recipes_thumbnails config/jwt config/oauth \
+    && chown -R www-data:www-data var public/images/recipes_thumbnails config/jwt config/oauth
 
 # No Docker-level HEALTHCHECK: the base image ships no curl. Coolify probes /healthz
 # (docker/frankenphp/Caddyfile.prod) over HTTP from outside the container instead.

@@ -73,17 +73,23 @@ Dropping `assets:install` ships a back-office with no CSS. Never commit `public/
 
 Runs on **every** container start, before binding `:8080`:
 
-1. Create directories, then `chown` `var/`, the thumbnails volume and `config/jwt` — the volumes
-   are mounted over the image's own, so their owner comes from the host.
+1. Create directories, then `chown` `var/`, the thumbnails volume, `config/jwt` and `config/oauth`
+   — the volumes are mounted over the image's own, so their owner comes from the host. The two
+   OAuth `.pem` files are then narrowed to `0660`: the bundle disables league's own file-mode
+   check, so nothing else stops a private key being world-readable in the container.
 2. `doctrine:database:create --if-not-exists`, retried 30× at 2 s — doubles as the wait for the
    database to accept connections. Bounded, so a wrong `DATABASE_URL` fails the boot.
 3. `lexik:jwt:generate-keypair --skip-if-exists` — the keypair is born on the first boot inside a
    persistent volume and reused thereafter.
-4. `cache:clear --no-warmup`, then `cache:warmup --no-optional-warmers`.
-5. `doctrine:migrations:migrate --no-interaction --allow-no-migration`, then `migrations:status`.
+4. `league:oauth2-server:generate-keypair --skip-if-exists` — the same, for the OAuth 2.1
+   authorization server's own pair in `config/oauth`. A separate pair with a separate blast radius:
+   regenerating it invalidates every MCP token, regenerating Lexik's logs out Radiant.
+5. `cache:clear --no-warmup`, then `cache:warmup --no-optional-warmers`.
+6. `doctrine:migrations:migrate --no-interaction --allow-no-migration`, then `migrations:status`.
 
 Each step has an off switch (`APP_WAIT_FOR_DATABASE`, `APP_FIX_PERMISSIONS`,
-`APP_GENERATE_JWT_KEYS`, `APP_CLEAR_CACHE`, `APP_RUN_MIGRATIONS`), all defaulting to on.
+`APP_GENERATE_JWT_KEYS`, `APP_GENERATE_OAUTH_KEYS`, `APP_CLEAR_CACHE`, `APP_RUN_MIGRATIONS`), all
+defaulting to on.
 
 Step 2 bounds the boot, and on failure it prints **the error the connection actually returned** —
 an unresolvable host, a refused password and a missing privilege are different problems and must not
@@ -102,10 +108,12 @@ inside this container. Under `set -e` that fails the boot. The rest of the cache
    releases. Read the generated SQL before committing it.
 2. **A green deploy does not prove the migration ran.** Check the `migrations:status` the entrypoint
    prints: `New` must be **0**.
-3. **Uploads, JWT keys and the MCP audit trail live on persistent volumes**, not in the image:
-   `/app/public/images/recipes_thumbnails` (Vich), `/app/config/jwt` (Lexik) and `/app/var/log`
-   (`mcp_audit.log`). A container is rebuilt on every deploy; without the volumes a redeploy wipes
-   them. Never write code that assumes a clean rebuild.
+3. **Uploads, both keypairs and the MCP audit trail live on persistent volumes**, not in the image:
+   `/app/public/images/recipes_thumbnails` (Vich), `/app/config/jwt` (Lexik), `/app/config/oauth`
+   (the OAuth authorization server) and `/app/var/log` (`mcp_audit.log`). A container is rebuilt on
+   every deploy; without the volumes a redeploy wipes them. Never write code that assumes a clean
+   rebuild. `config/oauth` is the one whose loss is **silent** — the server keeps answering and
+   simply rejects every token issued before the restart.
 4. **Never drop a file into the thumbnails directory by hand** (terminal, `docker cp`, Coolify's
    file browser) to "fix" a missing upload. Vich stores the **exact filename** in
    `Recipe::$thumbnail`; a file on disk under any other name is invisible and 404s. Upload through
@@ -117,7 +125,13 @@ inside this container. Under `set -e` that fails the boot. The rest of the cache
    volume of its own, not a path under `var/cache`.
 6. **Secrets are Coolify runtime environment variables**, never inlined in the image or a workflow.
    `TRUSTED_PROXIES=private_ranges` is mandatory, not cosmetic: see
-   [security.md](security.md).
+   [security.md](security.md). It is also what decides whether the OAuth
+   `/oauth2/authorize` → login → back redirect comes out on `https://`.
+7. **`OAUTH_PASSPHRASE` must be set before the `config/oauth` volume's first boot.** The passphrase
+   is sealed into the private key when it is generated. Set it afterwards and the only fix is
+   regenerating the pair, which invalidates every issued token; leave it empty and the key is
+   written in clear with **no error at all**. See
+   [docs/deploy/coolify.md](../../../docs/deploy/coolify.md).
 
 ## Conventional Commits drive the version
 

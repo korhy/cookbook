@@ -27,9 +27,15 @@ var/log
 var/sessions
 var/share
 
-# Persistent volumes in production, not image content: Vich uploads and the Lexik
-# keypair are mounted over these paths by Coolify.
+# Persistent volumes in production, not image content: Vich uploads and the two
+# keypairs are mounted over these paths by Coolify.
+#
+# config/oauth matters for a second reason: without it a developer's local
+# private.pem — generated with the passphrase from their own .env.local — would be
+# baked into an image that is pushed to GHCR. A private key must never be image
+# content, volume or no volume.
 config/jwt
+config/oauth
 public/images
 
 # Development-only, and dead weight in an image.
