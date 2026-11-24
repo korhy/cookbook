@@ -1,0 +1,66 @@
+# The OAuth 2.1 authorization server protecting the MCP write path at /api/v1/mcp.
+# Client registration is pre-registration only — no DCR, no CIMD:
+# see docs/decisions/mcp-oauth-client-registration.md.
+league_oauth2_server:
+    authorization_server:
+        private_key: '%env(resolve:OAUTH_PRIVATE_KEY)%'
+        private_key_passphrase: '%env(OAUTH_PASSPHRASE)%'
+        encryption_key: '%env(OAUTH_ENCRYPTION_KEY)%'
+
+        # OAuth 2.1 keeps exactly two grants: the authorization code grant, always with PKCE,
+        # and the refresh token grant. Every flag below is stated explicitly rather than left
+        # to a default, because the defaults are not all what we want and a silent upgrade
+        # must not be able to turn a grant on.
+        enable_auth_code_grant: true
+        enable_refresh_token_grant: true
+
+        # DEFAULTS TO TRUE in the bundle — this line is the one that matters. Client
+        # credentials would hand out an mcp:write token with no human in the loop, which is
+        # the opposite of the design: the Admin account approving the request IS the gate.
+        # Our one client is public and holds no secret, so it could not use this grant
+        # anyway, but a future confidential client must not inherit it by accident.
+        enable_client_credentials_grant: false
+
+        # Already false by default in 2.0. Restated: the password grant and the implicit
+        # grant are both removed by OAuth 2.1, and no device has to be authorized here.
+        enable_password_grant: false
+        enable_implicit_grant: false
+        enable_device_code_grant: false
+
+        # PKCE is mandatory for public clients. Our only client is public, so this is the
+        # whole proof-of-possession story — never create a client with
+        # `--allow-plain-text-pkce`, which would let `code_challenge_method=plain` through
+        # and make the verifier interceptable.
+        require_code_challenge_for_public_clients: true
+
+        # Rotate the refresh token on every use, so a stolen one is single-shot.
+        revoke_refresh_tokens: true
+
+    resource_server:
+        public_key: '%env(resolve:OAUTH_PUBLIC_KEY)%'
+
+    # One scope, for one capability: the MCP write path. It is not a default scope the way
+    # the recipe's `email` was — a client has to ask for it. The bundle requires `default`
+    # to be non-empty, and with a single scope available there is nothing else to name.
+    scopes:
+        available: ['mcp:write']
+        default: ['mcp:write']
+
+    persistence:
+        doctrine:
+            entity_manager: default
+
+when@test:
+    league_oauth2_server:
+        # No oauth2_* tables in the test database and no fixtures to maintain: the clients
+        # and tokens a test needs are built in the test itself.
+        persistence:
+            in_memory: null
+
+    services:
+        # Client secrets are hashed with bcrypt; the lowest cost keeps the suite fast.
+        # Mirrors the password_hashers block in security.yaml.
+        league.oauth2_server.password_hasher:
+            class: Symfony\Component\PasswordHasher\Hasher\NativePasswordHasher
+            arguments:
+                $cost: 4

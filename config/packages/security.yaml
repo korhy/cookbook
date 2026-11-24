@@ -17,6 +17,16 @@ security:
             # Ensure dev tools and static assets are always allowed
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
+        # The OAuth endpoints a client must reach with NO session and NO user. `security: false`
+        # rather than a PUBLIC_ACCESS access_control rule, because it also removes the firewall's
+        # entry point: nothing can turn these into a 302 to the login form. A client whose access
+        # token expired has to be able to re-discover the server and exchange its refresh token
+        # unauthenticated — if /oauth2/token answered with a redirect, it could never recover.
+        # /.well-known/* is listed here ahead of the metadata documents (RFC 9728 / RFC 8414)
+        # that land in the next phase; nothing serves those paths yet.
+        oauth2_public:
+            pattern: ^/(oauth2/token|\.well-known/)
+            security: false
         api:
             pattern: ^/api
             stateless: true
@@ -59,6 +69,14 @@ security:
         - { path: ^/api/v1/docs,      roles: PUBLIC_ACCESS }
         - { path: ^/api/v1/mcp,       roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: ROLE_ADMIN }
+        # The resource owner is the single Admin account, so the authorization endpoint just
+        # needs *a* logged-in user: an unauthenticated /oauth2/authorize hits the admin
+        # firewall's form_login entry point, lands on app_login, and Symfony returns to the
+        # saved target path afterwards. No login UI of our own to write.
+        # REMEMBERED (not FULLY) so the remember-me cookie the admin firewall issues counts.
+        # /oauth2/token and /.well-known/* never reach this map — the oauth2_public firewall
+        # above takes them out of security entirely.
+        - { path: ^/oauth2/authorize, roles: IS_AUTHENTICATED_REMEMBERED }
         - { path: ^/login, roles: PUBLIC_ACCESS }
         - { path: ^/admin, roles: ROLE_ADMIN }
 

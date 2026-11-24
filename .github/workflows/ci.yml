@@ -60,6 +60,15 @@ jobs:
           APP_ENV: test
           JWT_PASSPHRASE: test
 
+      # The OAuth authorization server's keypair, separate from Lexik's above. Any test that
+      # reaches /oauth2/token instantiates league's AuthorizationServer, which reads the private
+      # key from disk in its constructor — so a fresh checkout needs this before PHPUnit runs.
+      - name: Generate OAuth keys
+        run: php bin/console league:oauth2-server:generate-keypair --overwrite
+        env:
+          APP_ENV: test
+          OAUTH_PASSPHRASE: test
+
       - name: Setup test database
         run: php bin/console doctrine:migrations:migrate --env=test --no-interaction
         env:
@@ -72,6 +81,11 @@ jobs:
           APP_ENV: test
           DATABASE_URL: "postgresql://app:app@127.0.0.1:5432/app?serverVersion=16&charset=utf8"
           JWT_PASSPHRASE: test
+          # Must match the passphrase the keypair was generated with two steps up, for the same
+          # reason as JWT_PASSPHRASE: the passphrase is baked into the private key, so a mismatch
+          # fails every OAuth test with an opaque key-loading error. CI can pin both because it
+          # generates both pairs fresh; the Make targets deliberately do not (see testing.md).
+          OAUTH_PASSPHRASE: test
 
   # ─── Continuous deployment ────────────────────────────────────────────────
   # Build & push the production FrankenPHP image to GHCR, tagged `latest` and the

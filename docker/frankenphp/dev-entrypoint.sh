@@ -30,6 +30,13 @@ echo "[dev] Database is up."
 echo "[dev] Ensuring the JWT keypair exists ..."
 php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction
 
+# 3b. The OAuth authorization server's own keypair, in config/oauth/ — a different pair with a
+# different blast radius: regenerating it invalidates every MCP access and refresh token, while
+# the Lexik pair above only affects /api/login_check. Same bind-mount reasoning, so it is a no-op
+# on later boots. `make oauth-keys` does the same thing by hand.
+echo "[dev] Ensuring the OAuth keypair exists ..."
+php bin/console league:oauth2-server:generate-keypair --skip-if-exists --no-interaction
+
 # 4. Ensure the database exists.
 php bin/console doctrine:database:create --if-not-exists --no-interaction || true
 

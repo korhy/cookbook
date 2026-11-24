@@ -1,0 +1,11 @@
+# The authorization server's endpoints, mounted under /oauth2:
+#   GET|POST /oauth2/authorize    — the authorization endpoint (Admin login + consent)
+#   POST     /oauth2/token        — the token endpoint (public: no session, no login redirect)
+#   POST     /oauth2/device-code  — declared by the bundle, inert here: the device code grant
+#                                   is off, so league answers it with unsupported_grant_type
+# The prefix is not cosmetic — security.yaml matches on ^/oauth2, so moving it moves the
+# access_control rules with it.
+league_oauth2_server:
+    resource: '@LeagueOAuth2ServerBundle/config/routes.php'
+    type: php
+    prefix: /oauth2
