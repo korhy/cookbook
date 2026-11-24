@@ -21,8 +21,13 @@ straight to the Recipe CRUD — the dashboard is a router, not a landing page.
 there** — that is the single most common omission when adding an entity:
 
 ```php
-yield MenuItem::linkToCrud('Recipe', 'fas fa-utensils', Recipe::class);
+yield MenuItem::linkTo(RecipeController::class, 'Recipe', 'fas fa-utensils');
 ```
+
+Note the argument order and what it takes: `linkTo()` is given the **CRUD controller**, not the
+entity. `linkToCrud($label, $icon, $entityFqcn)` is deprecated since easyadmin 4.29, and a
+deprecation fails the test suite here (`failOnDeprecation`). `setQueryParameter()` works on both —
+it comes from `MenuItemTrait`.
 
 Icons are Font Awesome classes; keep the `fas fa-…` family already in use.
 

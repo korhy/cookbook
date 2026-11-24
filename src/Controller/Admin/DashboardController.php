@@ -4,10 +4,6 @@ declare(strict_types=1);
 
 namespace App\Controller\Admin;
 
-use App\Entity\Category;
-use App\Entity\Ingredient;
-use App\Entity\Instruction;
-use App\Entity\Recipe;
 use App\Enum\RecipeStatus;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
@@ -39,18 +35,23 @@ class DashboardController extends AbstractDashboardController
         return Assets::new()->addAssetMapperEntry('admin');
     }
 
+    /**
+     * MenuItem::linkTo() takes the CRUD controller, not the entity: linkToCrud() is deprecated
+     * since easyadmin 4.29 and the argument order differs. setQueryParameter() still applies —
+     * it comes from MenuItemTrait, which ControllerMenuItem uses too.
+     */
     public function configureMenuItems(): iterable
     {
         yield MenuItem::linkToDashboard('Dashboard', 'fa fa-home');
-        yield MenuItem::linkToCrud('Recipe', 'fas fa-utensils', Recipe::class);
+        yield MenuItem::linkTo(RecipeController::class, 'Recipe', 'fas fa-utensils');
         // Review queue for recipes created through the MCP write tools: they land as drafts and
         // are invisible to /api/v1 until published from here.
-        yield MenuItem::linkToCrud('Drafts', 'fas fa-inbox', Recipe::class)
+        yield MenuItem::linkTo(RecipeController::class, 'Drafts', 'fas fa-inbox')
             ->setQueryParameter('filters', [
                 'status' => ['comparison' => '=', 'value' => RecipeStatus::Draft->value],
             ]);
-        yield MenuItem::linkToCrud('Category', 'fas fa-list', Category::class);
-        yield MenuItem::linkToCrud('Ingredient', 'fas fa-carrot', Ingredient::class);
-        yield MenuItem::linkToCrud('Instruction', 'fas fa-clipboard-list', Instruction::class);
+        yield MenuItem::linkTo(CategoryController::class, 'Category', 'fas fa-list');
+        yield MenuItem::linkTo(IngredientController::class, 'Ingredient', 'fas fa-carrot');
+        yield MenuItem::linkTo(InstructionController::class, 'Instruction', 'fas fa-clipboard-list');
     }
 }

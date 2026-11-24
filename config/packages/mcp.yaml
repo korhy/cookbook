@@ -1,35 +1,55 @@
 mcp:
-    app: 'cookbook'
-    version: '1.0.0'
-    # Read tools are public and unauthenticated; the two write-adjacent tools (recipe_create,
-    # recipe_import_from_url) are gated by MCP_WRITE_TOKEN and refuse every call when it is unset.
-    description: 'MCP server for the Cookbook API. Recipe, ingredient and category search are public and read-only; creating a recipe requires a write token and produces an unpublished draft.'
+    # One server for now. The 0.13 configuration keys replaced the single implicit server of
+    # 0.12 (`app`, `client_transports`, `http`) with this map, and the server key is its
+    # advertised name unless `name` overrides it.
+    servers:
+        cookbook:
+            version: '1.0.0'
+            # Read tools are public and unauthenticated; the two write-adjacent tools (recipe_create,
+            # recipe_import_from_url) are gated by MCP_WRITE_TOKEN and refuse every call when it is unset.
+            description: 'MCP server for the Cookbook API. Recipe, ingredient and category search are public and read-only; creating a recipe requires a write token and produces an unpublished draft.'
 
-    client_transports:
-        stdio: true
-        http: true
+            # What this server exposes. A pattern ending in a backslash is a namespace prefix, and
+            # the bundle fails the build on a pattern that matches nothing — so renaming the
+            # namespace cannot silently empty the server.
+            registry:
+                tools: ['App\Mcp\Tool\']
 
-    http:
-        path: /mcp
-        # DNS-rebinding protection: the Host header must be one of these. The default is the
-        # production domain (parameter in config/services.yaml), so an unset MCP_ALLOWED_HOSTS
-        # is the correct production configuration. The variable exists to reach the app on
-        # another hostname — the Coolify-generated domain before the DNS cutover — without
-        # editing this file; set it to a comma-separated list, and remove it afterwards.
-        allowed_hosts: '%env(csv:default:default_mcp_allowed_hosts:MCP_ALLOWED_HOSTS)%'
-        session:
-            store: file
-            directory: '%kernel.cache_dir%/mcp-sessions'
-            ttl: 3600
+            transports:
+                stdio: true
+                http: true
+
+            http:
+                # Explicit, and it must stay explicit: the default is `/mcp/<server name>`, which the
+                # /api/v1 prefix in config/routes/mcp.yaml would turn into /api/v1/mcp/cookbook and
+                # break every configured client.
+                path: /mcp
+                # DNS-rebinding protection: the Host header must be one of these. The default is the
+                # production domain (parameter in config/services.yaml), so an unset MCP_ALLOWED_HOSTS
+                # is the correct production configuration. The variable exists to reach the app on
+                # another hostname — the Coolify-generated domain before the DNS cutover — without
+                # editing this file; set it to a comma-separated list, and remove it afterwards.
+                allowed_hosts: '%env(csv:default:default_mcp_allowed_hosts:MCP_ALLOWED_HOSTS)%'
+            session:
+                # `directory` is left to the bundle, which now scopes it per server
+                # (%kernel.cache_dir%/mcp-sessions/<name>). Two servers may not share one store —
+                # that is a compile-time error — so the per-server default is what lets a second
+                # server be added without moving this one.
+                store: file
+                ttl: 3600
 
 when@dev:
     mcp:
-        http:
-            # cookbook_app: the container's own name on the shared `korhy_net` network, so a
-            # containerised client (Radiant, another stack) is not rejected on the Host header.
-            allowed_hosts: ['localhost', '127.0.0.1', 'cookbook_app']
+        servers:
+            cookbook:
+                http:
+                    # cookbook_app: the container's own name on the shared `korhy_net` network, so a
+                    # containerised client (Radiant, another stack) is not rejected on the Host header.
+                    allowed_hosts: ['localhost', '127.0.0.1', 'cookbook_app']
 
 when@test:
     mcp:
-        http:
-            allowed_hosts: ['localhost', '127.0.0.1']
+        servers:
+            cookbook:
+                http:
+                    allowed_hosts: ['localhost', '127.0.0.1']
