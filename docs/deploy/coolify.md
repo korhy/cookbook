@@ -122,7 +122,7 @@ Montés dans Coolify (**Configuration → Persistent Storage → Add → Volume 
 conséquences assumées :
 
 - les sessions d'administration sont perdues au redéploiement (il faut se reconnecter) ;
-- les sessions HTTP MCP (`%kernel.cache_dir%/mcp-sessions`, TTL 1 h) aussi — les clients
+- les sessions HTTP MCP (`%kernel.cache_dir%/mcp-sessions/cookbook`, TTL 1 h) aussi — les clients
   rouvrent une session ;
 - les compteurs des trois limiteurs MCP (`mcp_write`, `mcp_import`, `mcp_write_auth`) repartent de
   zéro, le pool `cache.rate_limiter` vivant dans `var/cache`.

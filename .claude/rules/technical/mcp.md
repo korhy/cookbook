@@ -76,9 +76,10 @@ With **`MCP_IMPORT_ALLOWED_HOSTS` empty**, no URL can be fetched at all. Both ar
 committed `.env`, so a deploy never turns this into a write surface by itself — enabling it is a
 deliberate act in `.env.local` on the server.
 
-They are still listed in `tools/list` when disabled. That is a limitation, not an oversight: the
-`McpTool` attribute is autoconfigured at container-compile time and the token is a runtime value,
-so the tool cannot be conditionally unregistered. It hard-refuses instead.
+They are still listed in `tools/list` when disabled, and hard-refuse instead. The `McpTool`
+attribute is autoconfigured at container-compile time while the token is a runtime value, so a tool
+cannot be unregistered *because the token is missing*. What the per-server `registry:` does allow is
+publishing a tool on one server and not another — which is how the write path gets its own endpoint.
 
 ## Writing a tool
 
@@ -127,7 +128,15 @@ tool may not expose a field the REST API does not" stays checkable.
 
 ## Configuration
 
-`config/packages/mcp.yaml` restricts `allowed_hosts` per environment:
+`config/packages/mcp.yaml` declares one server, `cookbook`, under `mcp.servers` — the shape since
+bundle 0.13 replaced the single implicit server — whose `registry.tools` publishes the
+`App\Mcp\Tool\` namespace. A pattern that matches nothing fails the build, so renaming that
+namespace cannot silently empty the server.
+
+`http.path: /mcp` is explicit and must stay so: the default is `/mcp/<server name>`, which the
+`/api/v1` prefix in `config/routes/mcp.yaml` would turn into `/api/v1/mcp/cookbook`.
+
+`allowed_hosts` is restricted per environment:
 
 | Env | Hosts |
 |---|---|
@@ -137,8 +146,9 @@ tool may not expose a field the REST API does not" stays checkable.
 A tool that "does not answer" from inside a container is almost always a `Host` header missing from
 that list — check it before debugging the tool itself.
 
-Sessions are file-backed under `%kernel.cache_dir%/mcp-sessions` with a 3600s TTL. `make cc` wipes
-them; that is expected.
+Sessions are file-backed under `%kernel.cache_dir%/mcp-sessions/cookbook` with a 3600s TTL — the
+bundle scopes the store per server, and two servers may not share one, which is a compile-time
+error. `make cc` wipes them; that is expected.
 
 ## Configuration for the write path
 
