@@ -13,6 +13,17 @@ parameters:
     default_mcp_allowed_hosts: 'api.clementboudinel.fr'
     admin_email: "%env(string:default:default_admin_email:ADMIN_EMAIL)%"
 
+    # THE canonical URI of the MCP resource server. Declared once here and injected everywhere,
+    # because three things have to agree on it byte for byte or the OAuth write path fails in a
+    # way that reports nothing useful:
+    #   1. the RFC 9728 document's `resource` member, which clients read;
+    #   2. the `aud` claim App\OAuth\AudienceStampingAccessTokenRepository stamps on every token;
+    #   3. the RFC 8707 audience validation of phase 5, which compares by *exact equality*.
+    # No trailing slash, and it is the absolute URL of /api/v1/mcp — the value a client sends in
+    # its `resource` parameter. The defaults live in .env / .env.dev / .env.test; a real
+    # environment variable wins over all three.
+    app.mcp_resource_uri: '%env(MCP_RESOURCE_URI)%'
+
 services:
     # default configuration for services in *this* file
     _defaults:

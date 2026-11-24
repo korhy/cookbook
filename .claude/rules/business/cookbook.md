@@ -124,6 +124,7 @@ that "does not respond" from a container is usually a host missing from that lis
 src/
 ├── Controller/     # SecurityController + Admin/ (EasyAdmin CRUD controllers)
 ├── DTO/            # DTO/Mcp/ holds the validated MCP write inputs
+├── DependencyInjection/ # Compiler/ — the pass that reads the OAuth config back for discovery
 ├── Doctrine/       # Doctrine/Extension/ — API Platform query extensions (the draft filter)
 ├── Entity/         # Doctrine entities — and where #[ApiResource] lives
 ├── Enum/           # IngredientUnit, RecipeStatus
@@ -132,7 +133,10 @@ src/
 ├── Filter/         # custom API Platform filters
 ├── Form/           # form types used by EasyAdmin
 ├── Mcp/Tool/       # MCP tools — read tools, plus the two token-gated write tools
+├── OAuth/          # the authorization server's own classes: the RFC 8414 / RFC 9728 documents
+│                   #   and the decorator that stamps `aud` on an access token
 ├── Repository/     # every Doctrine query lives here
+├── Security/       # McpBearerChallenge — the WWW-Authenticate challenge, not wired until phase 5
 ├── Serializer/     # custom normalizers
 ├── Service/        # business logic — Service/Mcp/ (the write guard),
 │                   #   Service/Http/ (the SSRF-guarded fetcher), Service/Recipe/

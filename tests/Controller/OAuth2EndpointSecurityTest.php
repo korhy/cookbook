@@ -75,10 +75,12 @@ final class OAuth2EndpointSecurityTest extends WebTestCase
     {
         $this->client->request('GET', '/.well-known/oauth-authorization-server');
 
-        // 404 because the metadata documents (RFC 9728 / RFC 8414) land in the next phase. What
-        // matters today is that it is a 404 and not a 302: the path is outside security, so the
-        // controller added later is reachable the moment it exists.
-        self::assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
+        // A 200 since phase 3, where this used to assert a 404 and say the document was coming.
+        // What the test still guards is the firewall, not the body: anything in the 3xx range
+        // would mean the path had fallen through to the admin firewall's login redirect, leaving a
+        // client with no way to discover the server it has no credential for yet. The document's
+        // own shape is App\Tests\Controller\OAuthMetadataTest's business.
+        self::assertResponseIsSuccessful();
     }
 
     /**
