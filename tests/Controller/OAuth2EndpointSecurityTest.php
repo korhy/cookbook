@@ -140,4 +140,20 @@ final class OAuth2EndpointSecurityTest extends WebTestCase
 
         return $admin;
     }
+
+    protected function tearDown(): void
+    {
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+
+        // The admin row is the only thing this test persists, and app_test is shared with the
+        // rest of the suite — an account with ROLE_ADMIN must not accumulate there. Read the
+        // container before parent::tearDown(), which shuts the kernel down.
+        $em->createQuery('DELETE FROM App\Entity\Admin a WHERE a.username = :u')
+            ->setParameter('u', 'oauth_test_admin')
+            ->execute();
+
+        parent::tearDown();
+        $em->close();
+    }
 }

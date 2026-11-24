@@ -36,12 +36,28 @@ league_oauth2_server:
         # Rotate the refresh token on every use, so a stolen one is single-shot.
         revoke_refresh_tokens: true
 
+        # The three lifetimes, stated for the same reason as the grant flags above. The bundle
+        # defaults them to PT1H / PT10M / P1M, and the refresh default is the one that matters:
+        # a one-month refresh token would be the longest-lived credential in the whole design,
+        # sitting in plain text on an operator's disk, held by a *public* client that has no
+        # secret to prove it is the same caller. Rotation makes a stolen token single-shot but
+        # does not bound how long a quietly copied, unused one stays valid — only the TTL does.
+        # A week is the deliberate replacement: the resource owner here is the single Admin
+        # account, who is at the keyboard whenever MCP authoring happens, so the cost of the
+        # token expiring is one login and one approval.
+        access_token_ttl: PT1H
+        auth_code_ttl: PT10M
+        refresh_token_ttl: P7D
+
     resource_server:
         public_key: '%env(resolve:OAUTH_PUBLIC_KEY)%'
 
-    # One scope, for one capability: the MCP write path. It is not a default scope the way
-    # the recipe's `email` was — a client has to ask for it. The bundle requires `default`
-    # to be non-empty, and with a single scope available there is nothing else to name.
+    # One scope, for one capability: the MCP write path. `default` is what a request that names
+    # no scope receives, so a scopeless authorization request is granted `mcp:write` — the
+    # client does not have to ask. That is not avoidable here: the bundle declares the node
+    # required and non-empty, and with a single scope available there is nothing else to name.
+    # It is also not the gate. What gates a token is the Admin logging in and approving the
+    # request; the scope a client thought to ask for was never what stood in the way.
     scopes:
         available: ['mcp:write']
         default: ['mcp:write']

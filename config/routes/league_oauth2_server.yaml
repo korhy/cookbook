@@ -2,7 +2,12 @@
 #   GET|POST /oauth2/authorize    — the authorization endpoint (Admin login + consent)
 #   POST     /oauth2/token        — the token endpoint (public: no session, no login redirect)
 #   POST     /oauth2/device-code  — declared by the bundle, inert here: the device code grant
-#                                   is off, so league answers it with unsupported_grant_type
+#                                   is off, so league answers it with unsupported_grant_type.
+#                                   Note what protects it: the grant being disabled, not a rule.
+#                                   It is the one /oauth2/* path covered neither by the
+#                                   oauth2_public firewall nor by an access_control entry, so it
+#                                   falls through to the admin firewall and stays anonymously
+#                                   reachable. Enabling that grant means giving it a rule first.
 # The prefix is not cosmetic — security.yaml matches on ^/oauth2, so moving it moves the
 # access_control rules with it.
 league_oauth2_server:
