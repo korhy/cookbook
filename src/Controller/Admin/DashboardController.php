@@ -36,9 +36,7 @@ class DashboardController extends AbstractDashboardController
     }
 
     /**
-     * MenuItem::linkTo() takes the CRUD controller, not the entity: linkToCrud() is deprecated
-     * since easyadmin 4.29 and the argument order differs. setQueryParameter() still applies —
-     * it comes from MenuItemTrait, which ControllerMenuItem uses too.
+     * MenuItem::linkTo() takes the CRUD controller, not the entity.
      */
     public function configureMenuItems(): iterable
     {
