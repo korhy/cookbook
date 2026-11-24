@@ -87,3 +87,33 @@ the passphrase. **Locally the Make targets deliberately do not override `JWT_PAS
 in `config/jwt/` were generated with the value from `.env.local`, and forcing another one fails every
 API test with an opaque "error while trying to encode the JWT token". A suite failing on a Lexik key
 error means the keypair is missing — run `make jwt-keys`.
+
+## The OAuth keypair in tests — a *second* pair, on purpose
+
+`config/oauth/` holds **two** keypairs, and the duplication is deliberate:
+
+| File | Passphrase from | Used by |
+|---|---|---|
+| `private.pem` / `public.pem` | `OAUTH_PASSPHRASE` in `.env.local` | `dev` — a real passphrase, never committed |
+| `private_test.pem` / `public_test.pem` | `OAUTH_PASSPHRASE=test` in `.env.test` | `test` — pinned, non-secret, regenerable |
+
+One pair cannot serve both, and the reason is worth knowing before you try to simplify it:
+
+1. **`.env.local` is not loaded when `APP_ENV=test`.** Dotenv skips it by design, so the real
+   passphrase an operator keeps there can never reach a test run. (`JWT_PASSPHRASE` escapes this
+   only because `.env` carries a committed non-secret default for it; the OAuth variables are
+   empty in `.env` on purpose.)
+2. **`League\OAuth2\Server\CryptKey` decrypts the private key in its *constructor*** —
+   `vendor/league/oauth2-server/src/CryptKey.php:74` — not when it signs. So a passphrase
+   mismatch fails **every** test that instantiates the `AuthorizationServer`, including one that
+   only expects a `400`. The error is `Unable to read key from file` and it points at `vendor/`,
+   which sends you looking in entirely the wrong place.
+
+So: a protected dev key and a green suite are mutually exclusive with a single pair. Hence the
+second one. `make phpunit` depends on `oauth-keys-test`, which generates it with
+`--skip-if-exists`, so there is no first step to remember and no stale-key failure to debug. Both
+files are git-ignored by the existing `/config/oauth/*.pem` rule.
+
+CI needs none of this — `ci.yml` generates a throwaway pair with the same pinned passphrase before
+PHPUnit. **A suite that is green in CI and red locally on `Unable to read key from file` means the
+test pair is missing**: run `make oauth-keys-test`.
