@@ -76,6 +76,19 @@
     "knplabs/knp-paginator-bundle": {
         "version": "v6.10.0"
     },
+    "league/oauth2-server-bundle": {
+        "version": "2.0",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "2.0",
+            "ref": "3abd83ae75260df0fa3fccc7ed978224a04c2e5a"
+        },
+        "files": [
+            "config/packages/league_oauth2_server.yaml",
+            "config/routes/league_oauth2_server.yaml"
+        ]
+    },
     "lexik/jwt-authentication-bundle": {
         "version": "3.2",
         "recipe": {

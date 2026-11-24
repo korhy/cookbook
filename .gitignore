@@ -118,3 +118,8 @@ phpstan.neon
 /.claude/settings.local.json
 /.claude/scheduled_tasks.lock
 ###< claude code ###
+
+###> league/oauth2-server-bundle ###
+# The OAuth authorization server's own keypair — separate from Lexik's config/jwt above.
+/config/oauth/*.pem
+###< league/oauth2-server-bundle ###

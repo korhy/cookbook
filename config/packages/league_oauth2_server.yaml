@@ -1,0 +1,82 @@
+# The OAuth 2.1 authorization server protecting the MCP write path at /api/v1/mcp.
+# Client registration is pre-registration only — no DCR, no CIMD:
+# see docs/decisions/mcp-oauth-client-registration.md.
+league_oauth2_server:
+    authorization_server:
+        private_key: '%env(resolve:OAUTH_PRIVATE_KEY)%'
+        private_key_passphrase: '%env(OAUTH_PASSPHRASE)%'
+        encryption_key: '%env(OAUTH_ENCRYPTION_KEY)%'
+
+        # OAuth 2.1 keeps exactly two grants: the authorization code grant, always with PKCE,
+        # and the refresh token grant. Every flag below is stated explicitly rather than left
+        # to a default, because the defaults are not all what we want and a silent upgrade
+        # must not be able to turn a grant on.
+        enable_auth_code_grant: true
+        enable_refresh_token_grant: true
+
+        # DEFAULTS TO TRUE in the bundle — this line is the one that matters. Client
+        # credentials would hand out an mcp:write token with no human in the loop, which is
+        # the opposite of the design: the Admin account approving the request IS the gate.
+        # Our one client is public and holds no secret, so it could not use this grant
+        # anyway, but a future confidential client must not inherit it by accident.
+        enable_client_credentials_grant: false
+
+        # Already false by default in 2.0. Restated: the password grant and the implicit
+        # grant are both removed by OAuth 2.1, and no device has to be authorized here.
+        enable_password_grant: false
+        enable_implicit_grant: false
+        enable_device_code_grant: false
+
+        # PKCE is mandatory for public clients. Our only client is public, so this is the
+        # whole proof-of-possession story — never create a client with
+        # `--allow-plain-text-pkce`, which would let `code_challenge_method=plain` through
+        # and make the verifier interceptable.
+        require_code_challenge_for_public_clients: true
+
+        # Rotate the refresh token on every use, so a stolen one is single-shot.
+        revoke_refresh_tokens: true
+
+        # The three lifetimes, stated for the same reason as the grant flags above. The bundle
+        # defaults them to PT1H / PT10M / P1M, and the refresh default is the one that matters:
+        # a one-month refresh token would be the longest-lived credential in the whole design,
+        # sitting in plain text on an operator's disk, held by a *public* client that has no
+        # secret to prove it is the same caller. Rotation makes a stolen token single-shot but
+        # does not bound how long a quietly copied, unused one stays valid — only the TTL does.
+        # A week is the deliberate replacement: the resource owner here is the single Admin
+        # account, who is at the keyboard whenever MCP authoring happens, so the cost of the
+        # token expiring is one login and one approval.
+        access_token_ttl: PT1H
+        auth_code_ttl: PT10M
+        refresh_token_ttl: P7D
+
+    resource_server:
+        public_key: '%env(resolve:OAUTH_PUBLIC_KEY)%'
+
+    # One scope, for one capability: the MCP write path. `default` is what a request that names
+    # no scope receives, so a scopeless authorization request is granted `mcp:write` — the
+    # client does not have to ask. That is not avoidable here: the bundle declares the node
+    # required and non-empty, and with a single scope available there is nothing else to name.
+    # It is also not the gate. What gates a token is the Admin logging in and approving the
+    # request; the scope a client thought to ask for was never what stood in the way.
+    scopes:
+        available: ['mcp:write']
+        default: ['mcp:write']
+
+    persistence:
+        doctrine:
+            entity_manager: default
+
+when@test:
+    league_oauth2_server:
+        # No oauth2_* tables in the test database and no fixtures to maintain: the clients
+        # and tokens a test needs are built in the test itself.
+        persistence:
+            in_memory: null
+
+    services:
+        # Client secrets are hashed with bcrypt; the lowest cost keeps the suite fast.
+        # Mirrors the password_hashers block in security.yaml.
+        league.oauth2_server.password_hasher:
+            class: Symfony\Component\PasswordHasher\Hasher\NativePasswordHasher
+            arguments:
+                $cost: 4

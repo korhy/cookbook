@@ -105,6 +105,10 @@ psql: ## Open a psql shell on the dev database
 jwt-keys: ## Generate the Lexik JWT keypair if missing (the entrypoint does this too)
 	$(CONSOLE) lexik:jwt:generate-keypair --skip-if-exists --no-interaction
 
+.PHONY: oauth-keys
+oauth-keys: ## Generate the OAuth 2.1 authorization server keypair if missing (config/oauth/)
+	$(CONSOLE) league:oauth2-server:generate-keypair --skip-if-exists --no-interaction
+
 .PHONY: admin
 admin: ## Print a password hash to insert into the admin table (see README)
 	$(CONSOLE) security:hash-password
