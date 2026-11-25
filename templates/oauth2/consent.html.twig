@@ -1,0 +1,55 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ 'oauth2_consent.title'|trans }}{% endblock %}
+
+{% block body %}
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+            <h1 class="h3 mb-4">{{ 'oauth2_consent.title'|trans }}</h1>
+
+            {% if csrf_failed %}
+                <div class="alert alert-danger" role="alert">
+                    {{ 'oauth2_consent.csrf_failed'|trans }}
+                </div>
+            {% endif %}
+
+            <p>{{ 'oauth2_consent.client_requests_access'|trans({'%client%': client_name}) }}</p>
+
+            <p class="text-body-secondary">
+                <small>{{ 'oauth2_consent.client_id'|trans }} <code>{{ client_id }}</code></small>
+            </p>
+
+            <h2 class="h5 mt-4">{{ 'oauth2_consent.requested_permissions'|trans }}</h2>
+
+            <ul class="list-group mb-4">
+                {% for scope in scopes %}
+                    <li class="list-group-item">
+                        {# The catalogue key is the scope identifier with ':' swapped for '_',
+                           because a colon cannot nest as a YAML key. The raw identifier is
+                           printed beside the sentence so a scope with no key yet is still
+                           readable rather than rendering as a bare translation key. #}
+                        {{ ('oauth2_consent.scope.' ~ scope|replace({':': '_'}))|trans }}
+                        <code class="ms-1">{{ scope }}</code>
+                    </li>
+                {% endfor %}
+            </ul>
+
+            {# league reads EVERY authorization parameter from the query string
+               (AuthCodeGrant::validateAuthorizationRequest goes through getQueryStringParameter),
+               never from the request body — so the action has to carry the original query string
+               verbatim, and the body holds nothing but the CSRF token and the chosen button.
+               Moving a parameter into a hidden field here would fail validation with
+               `invalid_request` and no useful hint. #}
+            <form method="post" action="{{ app.request.requestUri }}">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token(csrf_token_id) }}">
+
+                <button type="submit" name="consent" value="approve" class="btn btn-primary">
+                    {{ 'oauth2_consent.approve'|trans }}
+                </button>
+                <button type="submit" name="consent" value="deny" class="btn btn-outline-secondary ms-2">
+                    {{ 'oauth2_consent.deny'|trans }}
+                </button>
+            </form>
+        </div>
+    </div>
+{% endblock %}

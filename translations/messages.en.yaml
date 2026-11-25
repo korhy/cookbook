@@ -13,3 +13,13 @@ ingredient_unit:
 recipe_status:
         draft: "Draft"
         published: "Published"
+oauth2_consent:
+        title: "Authorize access"
+        client_requests_access: "%client% is asking for permission to act on your Cookbook account."
+        client_id: "Client identifier:"
+        requested_permissions: "What it will be allowed to do"
+        scope:
+                mcp_write: "Create recipe drafts. A draft is invisible to the API and to MCP readers until you publish it yourself from the back-office."
+        approve: "Authorize"
+        deny: "Refuse"
+        csrf_failed: "This submission could not be verified, so nothing was authorized. Use the buttons on this page to answer."

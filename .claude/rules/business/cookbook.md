@@ -129,12 +129,13 @@ src/
 ├── Entity/         # Doctrine entities — and where #[ApiResource] lives
 ├── Enum/           # IngredientUnit, RecipeStatus
 ├── Exception/      # Exception/Mcp/ — the write-path refusals
-├── EventListener/  # SlugListener, LocaleListener
+├── EventListener/  # SlugListener, LocaleListener, OAuthConsentListener (the consent screen)
 ├── Filter/         # custom API Platform filters
 ├── Form/           # form types used by EasyAdmin
 ├── Mcp/Tool/       # MCP tools — read tools, plus the two token-gated write tools
-├── OAuth/          # the authorization server's own classes: the RFC 8414 / RFC 9728 documents
-│                   #   and the decorator that stamps `aud` on an access token
+├── OAuth/          # the authorization server's own classes: the RFC 8414 / RFC 9728 documents,
+│                   #   the decorator that stamps `aud` on an access token, and the
+│                   #   CSRF-validating consent decision behind /oauth2/authorize
 ├── Repository/     # every Doctrine query lives here
 ├── Security/       # McpBearerChallenge — the WWW-Authenticate challenge, not wired until phase 5
 ├── Serializer/     # custom normalizers

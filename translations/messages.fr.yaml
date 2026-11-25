@@ -13,3 +13,13 @@ ingredient_unit:
 recipe_status:
         draft: "Brouillon"
         published: "Publiée"
+oauth2_consent:
+        title: "Autoriser l'accès"
+        client_requests_access: "%client% demande l'autorisation d'agir sur votre compte Cookbook."
+        client_id: "Identifiant du client :"
+        requested_permissions: "Ce qui sera autorisé"
+        scope:
+                mcp_write: "Créer des brouillons de recettes. Un brouillon reste invisible pour l'API et pour les lecteurs MCP jusqu'à ce que vous le publiiez vous-même depuis le back-office."
+        approve: "Autoriser"
+        deny: "Refuser"
+        csrf_failed: "Cette soumission n'a pas pu être vérifiée : rien n'a été autorisé. Utilisez les boutons de cette page pour répondre."
