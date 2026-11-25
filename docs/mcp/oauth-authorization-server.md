@@ -195,20 +195,25 @@ Two runtime environment variables in Coolify: **`OAUTH_PASSPHRASE`** and
 **`OAUTH_ENCRYPTION_KEY`**.
 
 > **`OAUTH_PASSPHRASE` has to be set before the volume's first boot.** The passphrase is sealed
-> into the private key when the key is generated; it is not a value the application checks at
-> startup. Setting it *after* that first boot therefore means regenerating the pair — and that
-> invalidates every issued token.
+> into the private key when the key is generated, by `openssl_pkey_export()`; it is not a value the
+> application checks at startup.
 
-The two wrong orderings do not fail alike, and the second is the dangerous one:
+**So the entrypoint refuses to generate a pair while the variable is empty**, and logs the missing
+variable by name. Not creating the wrong key is a stronger guarantee than documenting how to
+replace it. It *skips* rather than failing the boot — halting would take the whole API down,
+Radiant included, for a subsystem nothing consumes before phase 5 — so the API stays up, only
+`/oauth2/*` cannot issue a token, and the first boot after the variable is set creates the pair
+with nothing to repair.
 
-| At the first boot | Then | Symptom |
-|---|---|---|
-| a value is set | it is changed later | **Loud.** Every signature raises `LogicException: Unable to read key from file`, because `--skip-if-exists` keeps the key that was encrypted with the old value |
-| **left empty** | a value is set later | **Silent.** The key was written in clear, and OpenSSL ignores a passphrase handed to an unencrypted key. Everything works, the variable is set, and the private key on the volume is **not encrypted** |
+Two cases the guard cannot cover, the second being the dangerous one:
 
-`head -2 config/oauth/private.pem` must contain `ENCRYPTED`. The volume table, the
-`--overwrite` recovery command and the post-deploy checks are in
-[the deploy guide](../deploy/coolify.md).
+| Situation | Symptom |
+|---|---|
+| a value was set, then changed | **Loud.** Every signature raises `LogicException: Unable to read key from file`, because `--skip-if-exists` keeps the key encrypted with the old value |
+| an **unencrypted** pair already exists on the volume — born before this guard, or made by hand | **Silent.** OpenSSL ignores a passphrase handed to an unencrypted key, so everything works, the variable is set, and the private key stays in clear. The entrypoint now warns on every boot, since it cannot fix it alone: regenerating is a decision |
+
+`head -2 config/oauth/private.pem` must contain `ENCRYPTED`. The volume table, the `--overwrite`
+recovery command and the post-deploy checks are in [the deploy guide](../deploy/coolify.md).
 
 ### CORS and `TRUSTED_PROXIES`
 

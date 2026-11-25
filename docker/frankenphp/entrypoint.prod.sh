@@ -107,13 +107,44 @@ ensure_jwt_keypair() {
 # issued. --skip-if-exists is what makes the second boot a no-op; the volume is what
 # makes the keys still be there to skip.
 #
-# OAUTH_PASSPHRASE is baked into the private key here, at generation time. Setting it
-# after the first boot therefore means regenerating the pair — see docs/deploy/coolify.md.
+# OAUTH_PASSPHRASE is baked into the private key here, at generation time, by
+# openssl_pkey_export(). So this step REFUSES to create a pair while the variable is
+# empty: a key born without a passphrase is unencrypted on the persistent volume for
+# as long as it lives, and nothing ever reports it — OpenSSL ignores a passphrase
+# handed to an unencrypted key, so the server keeps working. The cost only lands much
+# later, as league's "Unable to read key from file" pointing into vendor/.
+#
+# It skips rather than failing the boot, unlike the database step. Halting here would
+# take the whole API down — Radiant included — for a subsystem nothing consumes before
+# phase 5. The API stays up, only /oauth2/* cannot issue a token, and the first boot
+# after the variable is set creates the pair correctly with nothing to repair.
 ensure_oauth_keypair() {
 	[ "${APP_GENERATE_OAUTH_KEYS:-1}" = "1" ] || return 0
+
+	if [ ! -f "${OAUTH_DIR}/private.pem" ] && [ -z "${OAUTH_PASSPHRASE:-}" ]; then
+		log "NOT generating the OAuth keypair: OAUTH_PASSPHRASE is empty."
+		log "  Generating one now would write an UNENCRYPTED private key to the"
+		log "  config/oauth volume, and nothing afterwards would report it."
+		log "  Set OAUTH_PASSPHRASE in the environment and restart: the next boot"
+		log "  creates the pair with it. Until then /oauth2/* cannot issue a token;"
+		log "  the rest of the API is unaffected."
+		return 0
+	fi
+
 	log "Ensuring the OAuth keypair exists"
 	php bin/console league:oauth2-server:generate-keypair --skip-if-exists --no-interaction --env=prod --no-debug
 	chown -R www-data:www-data "${OAUTH_DIR}"
+
+	# An existing pair is never regenerated here — that is a decision, not a boot side
+	# effect — so an unprotected one can only be reported, not repaired. This is the
+	# case the guard above cannot prevent: a key already born on a volume before the
+	# variable existed. Worth a line on every boot precisely because it is silent.
+	if [ -n "${OAUTH_PASSPHRASE:-}" ] && ! grep -q 'ENCRYPTED' "${OAUTH_DIR}/private.pem" 2>/dev/null; then
+		log "WARNING: config/oauth/private.pem is NOT encrypted, though OAUTH_PASSPHRASE is set."
+		log "  It was generated while the variable was empty. Tokens still work, which is"
+		log "  exactly why this goes unnoticed. The fix regenerates the pair and invalidates"
+		log "  every issued token — see docs/deploy/coolify.md."
+	fi
 }
 
 run_cache_refresh() {

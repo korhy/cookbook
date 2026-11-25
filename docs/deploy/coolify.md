@@ -75,9 +75,11 @@ d'exposer `:8080` :
 3. `lexik:jwt:generate-keypair --skip-if-exists` — la paire de clés naît au premier boot dans le
    volume et survit ensuite. Sans elle, tout `POST /api/login_check` échoue.
 4. `league:oauth2-server:generate-keypair --skip-if-exists` — même principe, dans le volume
-   `config/oauth` : la paire RSA qui signe les jetons d'accès MCP. L'entrypoint restreint ensuite
-   les deux `.pem` à `0660`, parce que rien d'autre ne le fait : le bundle construit sa `CryptKey`
-   avec `$keyPermissionsCheck = false`, et `Filesystem::dumpFile` laisse la paire en `0664`.
+   `config/oauth` : la paire RSA qui signe les jetons d'accès MCP. **Sauf si `OAUTH_PASSPHRASE` est
+   vide : dans ce cas l'entrypoint ne génère rien et le dit**, plutôt que d'écrire une clé privée
+   non chiffrée sur un volume persistant (voir ci-dessous). L'entrypoint restreint ensuite les deux
+   `.pem` à `0660`, parce que rien d'autre ne le fait : le bundle construit sa `CryptKey` avec
+   `$keyPermissionsCheck = false`, et `Filesystem::dumpFile` laisse la paire en `0664`.
 5. `cache:clear` + `cache:warmup` (env `prod`).
 6. `doctrine:migrations:migrate --no-interaction --allow-no-migration`, suivi d'un
    `migrations:status` imprimé dans les logs.
@@ -187,19 +189,27 @@ secrets et ne figurent pas dans ce dépôt.
 > Ce n'est pas un mot de passe que l'application vérifie au démarrage : c'est le chiffrement du
 > fichier lui-même.
 
-Les deux façons de s'y prendre dans le mauvais ordre n'échouent pas de la même manière, et c'est la
-seconde qui est piégeuse :
+**L'entrypoint refuse de générer la paire tant que la variable est vide**, et l'écrit dans les
+logs en nommant la variable manquante. C'est une garantie plus forte qu'une procédure de
+rattrapage : le mauvais état n'est jamais créé. Il *saute* l'étape, il ne fait pas échouer le
+boot — l'API entière, Radiant compris, n'a pas à tomber pour un sous-système que rien ne consomme
+avant la phase 5. Seuls les endpoints `/oauth2/*` sont alors hors service, et le premier
+redémarrage après avoir renseigné la variable crée la bonne paire, sans rien à réparer.
 
-- **Variable déjà renseignée, puis modifiée.** Échec franc et immédiat : la clé existante a été
+Reste deux cas que ce garde-fou ne couvre pas, et c'est le second qui est piégeux :
+
+- **Variable renseignée, puis modifiée.** Échec franc et immédiat : la clé existante a été
   chiffrée avec l'ancienne valeur, `--skip-if-exists` ne la remplace pas, et toute signature de
   jeton lève `LogicException: Unable to read key from file`. Visible tout de suite.
-- **Variable laissée vide au premier boot, renseignée ensuite.** **Aucune erreur** : la clé a été
-  écrite en clair, et OpenSSL ignore simplement une passphrase fournie pour une clé non chiffrée.
-  Le serveur fonctionne, la variable est renseignée, et la clé privée reste **non chiffrée sur le
-  volume** — la protection que la variable semble apporter n'existe pas. Vérification :
+- **Une clé non chiffrée existe déjà sur le volume** — née avant que ce garde-fou existe, ou
+  générée à la main. **Aucune erreur** : OpenSSL ignore simplement une passphrase fournie pour une
+  clé non chiffrée. Le serveur fonctionne, la variable est renseignée, et la clé privée reste en
+  clair — la protection que la variable semble apporter n'existe pas. L'entrypoint le **signale
+  désormais à chaque boot** (`WARNING: config/oauth/private.pem is NOT encrypted`), parce qu'il ne
+  peut pas le corriger seul : régénérer est une décision. Vérification à la main :
   `head -2 config/oauth/private.pem` doit contenir `ENCRYPTED`.
 
-Dans les deux cas, le seul rattrapage est de régénérer la paire, ce qui **invalide tous les jetons
+Dans ces deux cas, le seul rattrapage est de régénérer la paire, ce qui **invalide tous les jetons
 déjà émis** (chaque client MCP refait le flux OAuth). Depuis le terminal Coolify, la variable étant
 d'abord corrigée :
 
@@ -294,6 +304,8 @@ l'application (onglet *Webhooks* de la ressource Coolify), avec le token d'API e
 8. La mini-app Cookbook de Radiant affiche ses recettes, miniatures comprises.
 9. **La paire de clés OAuth est née chiffrée dans son volume.** Dans les logs du conteneur,
    l'entrypoint imprime `Ensuring the OAuth keypair exists` suivi de `[OK] Done!` au premier boot.
+   S'il imprime à la place `NOT generating the OAuth keypair: OAUTH_PASSPHRASE is empty.`, la
+   variable manque : la renseigner et redémarrer suffit, rien n'a été écrit.
    Puis, depuis le terminal Coolify :
    ```bash
    ls -l config/oauth && head -2 config/oauth/private.pem

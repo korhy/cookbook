@@ -83,7 +83,9 @@ Runs on **every** container start, before binding `:8080`:
    persistent volume and reused thereafter.
 4. `league:oauth2-server:generate-keypair --skip-if-exists` — the same, for the OAuth 2.1
    authorization server's own pair in `config/oauth`. A separate pair with a separate blast radius:
-   regenerating it invalidates every MCP token, regenerating Lexik's logs out Radiant.
+   regenerating it invalidates every MCP token, regenerating Lexik's logs out Radiant. **Skipped,
+   loudly, when `OAUTH_PASSPHRASE` is empty and no pair exists yet** — it would write an
+   unencrypted private key to a persistent volume, and nothing afterwards would report it.
 5. `cache:clear --no-warmup`, then `cache:warmup --no-optional-warmers`.
 6. `doctrine:migrations:migrate --no-interaction --allow-no-migration`, then `migrations:status`.
 
@@ -128,9 +130,11 @@ inside this container. Under `set -e` that fails the boot. The rest of the cache
    [security.md](security.md). It is also what decides whether the OAuth
    `/oauth2/authorize` → login → back redirect comes out on `https://`.
 7. **`OAUTH_PASSPHRASE` must be set before the `config/oauth` volume's first boot.** The passphrase
-   is sealed into the private key when it is generated. Set it afterwards and the only fix is
-   regenerating the pair, which invalidates every issued token; leave it empty and the key is
-   written in clear with **no error at all**. See
+   is sealed into the private key when it is generated, so changing it afterwards means
+   regenerating the pair and invalidating every issued token. The entrypoint refuses to generate
+   anything while the variable is empty — skipping, not failing, so the API stays up — because a
+   key born without a passphrase is unencrypted on the volume and **nothing reports it**: OpenSSL
+   ignores a passphrase given for an unencrypted key, so the server keeps working. See
    [docs/deploy/coolify.md](../../../docs/deploy/coolify.md).
 
 ## Conventional Commits drive the version
