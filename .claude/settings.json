@@ -4,12 +4,15 @@
       "Read(./.env.local)",
       "Read(./.env.*.local)",
       "Read(./config/jwt/**)",
+      "Read(./config/oauth/**)",
       "Edit(./.env.local)",
       "Edit(./.env.*.local)",
       "Edit(./config/jwt/**)",
+      "Edit(./config/oauth/**)",
       "Write(./.env.local)",
       "Write(./.env.*.local)",
-      "Write(./config/jwt/**)"
+      "Write(./config/jwt/**)",
+      "Write(./config/oauth/**)"
     ]
   },
   "hooks": {

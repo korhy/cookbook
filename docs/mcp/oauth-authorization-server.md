@@ -168,20 +168,75 @@ invalidates every issued token.
 client. Both values are resolved at runtime, so the container still boots with them empty; the
 failure surfaces on the first token request instead.
 
-### Production — not configured yet (phase 7)
+### Production
 
-> **`config/oauth/` must be a persistent volume or the keys must come from Coolify, before this
-> server is used in production.**
+`config/oauth` is a **Coolify persistent volume**, and `docker/frankenphp/entrypoint.prod.sh`
+generates the keypair into it on the first boot — `ensure_oauth_keypair`, step 4 of the boot
+sequence, running `league:oauth2-server:generate-keypair --skip-if-exists` with an
+`APP_GENERATE_OAUTH_KEYS=0` off switch like every other step.
 
-`var/` is not persistent and the container is rebuilt on every deploy. If the keypair is generated
-at boot into the image's own filesystem, **every container restart issues a fresh keypair and
-invalidates every token that was ever handed out** — the same trap the thumbnails volume and
-`config/jwt` already exist to avoid (see [the deploy guide](../deploy/coolify.md)).
+**The volume is what makes that step correct.** The container is rebuilt on every deploy, so
+without one each restart would write a *new* keypair and invalidate every token ever handed out —
+the trap the thumbnails volume and `config/jwt` already exist to avoid. `--skip-if-exists` is what
+makes the second boot a no-op; the volume is what leaves something there to skip. Nothing announces
+the failure either: the server answers normally and simply rejects every token older than the last
+restart.
 
-For that reason `docker/frankenphp/entrypoint.prod.sh` is **deliberately not** given an
-`ensure_oauth_keypair` step in this phase. Generating keys unattended is only correct once the
-volume is there. Phase 7 adds the volume, the two environment variables and the entrypoint step
-together.
+Two details the entrypoint handles that are easy to miss:
+
+- It narrows both `.pem` files to **`0660`**. The bundle builds its `CryptKey` with
+  `$keyPermissionsCheck = false`, and `Filesystem::dumpFile` leaves the pair at `0664`, so this
+  line is the only thing keeping a private key from being world-readable inside the container.
+- `config/oauth` is in **`.dockerignore`**, beside `config/jwt`. Without it a developer's local
+  `private.pem` — generated with the passphrase from their own `.env.local` — would be baked into
+  the image CI pushes to GHCR.
+
+Two runtime environment variables in Coolify: **`OAUTH_PASSPHRASE`** and
+**`OAUTH_ENCRYPTION_KEY`**.
+
+> **`OAUTH_PASSPHRASE` has to be set before the volume's first boot.** The passphrase is sealed
+> into the private key when the key is generated, by `openssl_pkey_export()`; it is not a value the
+> application checks at startup.
+
+**So the entrypoint refuses to generate a pair while the variable is empty**, and logs the missing
+variable by name. Not creating the wrong key is a stronger guarantee than documenting how to
+replace it. It *skips* rather than failing the boot — halting would take the whole API down,
+Radiant included, for a subsystem nothing consumes before phase 5 — so the API stays up, only
+`/oauth2/*` cannot issue a token, and the first boot after the variable is set creates the pair
+with nothing to repair.
+
+Two cases the guard cannot cover, the second being the dangerous one:
+
+| Situation | Symptom |
+|---|---|
+| a value was set, then changed | **Loud.** Every signature raises `LogicException: Unable to read key from file`, because `--skip-if-exists` keeps the key encrypted with the old value |
+| an **unencrypted** pair already exists on the volume — born before this guard, or made by hand | **Silent.** OpenSSL ignores a passphrase handed to an unencrypted key, so everything works, the variable is set, and the private key stays in clear. The entrypoint now warns on every boot, since it cannot fix it alone: regenerating is a decision |
+
+`head -2 config/oauth/private.pem` must contain `ENCRYPTED`. The volume table, the `--overwrite`
+recovery command and the post-deploy checks are in [the deploy guide](../deploy/coolify.md).
+
+### CORS and `TRUSTED_PROXIES`
+
+Both are decided, and neither needed a change:
+
+- **CORS stays scoped to `^/api/`.** `nelmio_cors` does not cover `/.well-known/*` or `/oauth2/*`,
+  and nothing calling those is a browser subject to the origin policy: `/oauth2/authorize` is a
+  top-level *navigation* (CORS does not apply), and `/oauth2/token` and the metadata documents are
+  fetched by the MCP client — Claude Code, a Node process on the operator's machine, which sends
+  no `Origin` and triggers no preflight. Registering a client that runs **in** a browser would be
+  the trigger to revisit it, and that cannot happen by accident: such a client needs an `https://`
+  web origin as its `redirect_uri`, not the loopback `http://localhost:3118/callback`.
+- **`TRUSTED_PROXIES=private_ranges` is correct as it stands**, but it now carries more weight: the
+  authorization server emits absolute URLs and redirects, so a wrong value sends the
+  `/oauth2/authorize` → login → back bounce out on `http://` or on the internal host, and the flow
+  never returns.
+
+> **[`MCP_RESOURCE_URI`](#mcp_resource_uri--the-one-value-everything-hangs-off) is not affected by
+> any of this.** It is explicit configuration, read from the environment and never derived from the
+> request, so the `resource` member, the derived
+> `issuer` and the `aud` claim are right even when the proxy settings are wrong. That is precisely
+> why a bad proxy configuration shows up as a broken *redirect* rather than a wrong discovery
+> document — starting from the metadata would waste the diagnosis.
 
 ---
 
@@ -249,9 +304,9 @@ No `--client-secret`: the client is public. The first call opens the browser at
 | 4 | The consent page on `/oauth2/authorize` |
 | 5 | The `mcp_authoring` firewall, `McpScopeVoter`, wiring `McpBearerChallenge`, the RFC 8707 audience validation, and dropping `string $token` from the two write tools |
 | 6 | End-to-end tests of the whole flow |
-| 7 | The production volume for `config/oauth/`, the Coolify environment variables, CORS on `/.well-known` and `/oauth2`, and `trusted_proxies` |
 
-**Phase 7 has to land before this server is used in production**, and that is now more pressing
-than it was: these documents publish a `token_endpoint` that production cannot yet mint a token
-from, because `config/oauth/` is not a persistent volume and the entrypoint deliberately generates
-no keypair. Discovery works; the flow behind it does not, until the volume exists.
+**Phase 7 is done**, out of numeric order on purpose. The documents above publish a
+`token_endpoint`, and until the volume existed production could not mint a token from it:
+discovery worked, the flow behind it did not. It does now — see [Production](#production) for the
+volume, the two Coolify environment variables, the entrypoint step, and the CORS and
+`TRUSTED_PROXIES` decisions.
