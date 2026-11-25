@@ -139,7 +139,12 @@ ensure_oauth_keypair() {
 	# effect — so an unprotected one can only be reported, not repaired. This is the
 	# case the guard above cannot prevent: a key already born on a volume before the
 	# variable existed. Worth a line on every boot precisely because it is silent.
-	if [ -n "${OAUTH_PASSPHRASE:-}" ] && ! grep -q 'ENCRYPTED' "${OAUTH_DIR}/private.pem" 2>/dev/null; then
+	# Anchored on the PKCS#8 header, not a bare substring: "ENCRYPTED" is a valid
+	# base64 sequence, so an unanchored match could in principle hit the body of an
+	# UNencrypted key — and that false positive would show up as no warning at all,
+	# which is the exact silence this block exists to break. The two headers differ
+	# only by that word, so the anchor is enough to tell them apart.
+	if [ -n "${OAUTH_PASSPHRASE:-}" ] && ! grep -q '^-----BEGIN ENCRYPTED' "${OAUTH_DIR}/private.pem" 2>/dev/null; then
 		log "WARNING: config/oauth/private.pem is NOT encrypted, though OAUTH_PASSPHRASE is set."
 		log "  It was generated while the variable was empty. Tokens still work, which is"
 		log "  exactly why this goes unnoticed. The fix regenerates the pair and invalidates"
