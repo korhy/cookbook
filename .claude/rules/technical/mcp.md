@@ -10,16 +10,36 @@ paths:
   - "**/config/packages/rate_limiter.yaml"
   - "**/config/routes/mcp.yaml"
   - "**/tests/Mcp/**/*.php"
+  - "**/src/Security/Mcp*.php"
+  - "**/src/EventListener/Mcp*.php"
   - "**/tests/Service/Mcp/**/*.php"
   - "**/tests/Service/Http/**/*.php"
 ---
 
 # MCP server
 
-`symfony/mcp-bundle` publishes the tools in `src/Mcp/Tool/` over stdio **and** HTTP at
-**`/api/v1/mcp`**, which `security.yaml` grants `PUBLIC_ACCESS`.
+`symfony/mcp-bundle` publishes **two** servers, and which one a tool lands on is the security
+boundary of this whole area:
+
+| Server | Endpoint | Transports | Tools | Security |
+|---|---|---|---|---|
+| `cookbook` | `/api/v1/mcp` | stdio + HTTP | `App\Mcp\Tool\Read\` | `PUBLIC_ACCESS` — anonymous |
+| `authoring` | `/api/v1/mcp-authoring` | HTTP only | `App\Mcp\Tool\Write\` | OAuth 2.1, `mcp:write` scope |
+
+**The split exists because an MCP tool error is a JSON-RPC object inside a `200`.** A server with
+mixed tools can only refuse a caller in the body; `401` with a `WWW-Authenticate` challenge and
+`403 insufficient_scope` are *transport* answers, and RFC 9728 discovery is built on them. So the
+write path needs an endpoint of its own, with a firewall of its own.
+
+Which server a tool belongs to is decided by the `registry:` namespace prefix in
+`config/packages/mcp.yaml`, which is why `src/Mcp/Tool/` is split into `Read/` and `Write/`: **the
+directory a tool sits in is its server.** The two cannot drift apart, and a new tool cannot reach
+the public endpoint by accident. The authoring server declares `stdio: false` — a piped caller
+carries no Authorization header, so there would be no identity to authorize, meter or record.
 
 ## The contract
+
+### The public read server
 
 **Public and unauthenticated.** Two rules hold for *every* tool, and neither is negotiable:
 
@@ -42,13 +62,23 @@ return the whole 13k-row table is a defect. They see **published recipes only**;
 
 ### Write tools — the sanctioned exception, not a precedent
 
-`recipe_create` and `recipe_import_from_url`. These exist because writing recipes from an MCP client
-was a deliberate product decision, taken with the security design below. **Adding a third is a
-decision for the user, not a step in a feature.** Any new one must reuse every layer:
+`recipe_create` and `recipe_import_from_url`, on the `authoring` server. These exist because
+writing recipes from an MCP client was a deliberate product decision, taken with the security
+design below. **Adding a third is a decision for the user, not a step in a feature.** Any new one
+must go in `App\Mcp\Tool\Write\` and reuse every layer:
 
+0. **No credential in the signature. Ever.** The bundle derives a tool's advertised JSON Schema
+   from its `__invoke()` parameters, so a `string $token` parameter announces the credential to the
+   client as a required field — which is how `MCP_WRITE_TOKEN` ended up pasted in clear into a
+   conversation, and the reason the OAuth server exists. Authorization belongs to the firewall, in
+   a header; `McpAuthoringEndpointTest::testNoWriteToolAdvertisesACredentialParameter` fails if a
+   credential parameter ever comes back.
 1. **`McpWriteGuard` first, before anything else happens.** Call `assertMayWrite()` (or
-   `assertMayFetch()` for outbound requests) as the first statement. It throws; it does not return a
-   status, precisely so that forgetting to check is not something you can do by accident.
+   `assertMayFetch()` for outbound requests) as the first statement. It no longer decides *whether*
+   a caller may write — the firewall does — but it still meters and records, and it throws rather
+   than returning a status, precisely so that forgetting to call it is not something you can do by
+   accident. For `recipe_import_from_url` the ordering is the thing that keeps the importer from
+   being an open proxy: the guard must refuse before the fetcher reaches the network.
 2. **Drafts, never published rows.** `recipe_create` sets `RecipeStatus::Draft`. A draft is filtered
    out of `/api/v1` by `App\Doctrine\Extension\PublishedRecipeExtension` and out of the read tools
    by the repository. Publication happens in EasyAdmin, by a human.
@@ -61,30 +91,53 @@ decision for the user, not a step in a feature.** Any new one must reuse every l
    vector.
 5. **One transaction.** `RecipeDraftFactory` writes the whole graph inside
    `wrapInTransaction()`, so a rejected draft leaves no orphaned ingredients behind.
-6. **Audit, without leaking.** The guard logs to the `mcp_audit` channel. It records an 8-character
-   SHA-256 fingerprint of the token — **never the token**.
+6. **Audit, without leaking.** The guard logs to the `mcp_audit` channel: the tool, the OAuth
+   client, the user it acted for, the caller's IP, and an 8-character SHA-256 fingerprint of the
+   **access token id** — never a credential. Authorization proves a caller may write; only the
+   record says what they did.
 
-Refusal messages are uniform on purpose: "disabled", "wrong token" and "locked out" all return
-`Write access denied.`, because distinguishing them tells an attacker whether a write surface
-exists. `UrlFetchRejectedException` is vague about *why* a host was refused for the same reason —
-naming the resolved address would make the importer an internal network scanner.
+`UrlFetchRejectedException` stays vague about *why* a host was refused: naming the resolved address
+would make the importer an internal network scanner. The guard's own refusals no longer need to be
+uniform — a caller reaching it is authenticated, so "rate limit reached" tells them nothing they
+should not know, and a client that cannot tell throttled from refused retries forever.
+
+### The authorization layers
+
+Four distinct checks stand in front of a write, and each one answers a different question:
+
+| Layer | Question | Refusal |
+|---|---|---|
+| `mcp_authoring` firewall (`oauth2: true`) | is this a token this server signed, unexpired and unrevoked? | `401` + challenge |
+| `App\Security\McpTokenAudienceVerifier` | was it issued for **this** resource? (RFC 8707, exact equality) | `401 invalid_token` |
+| `App\Security\McpScopeVoter` via `access_control` | does the grant carry `mcp:write`? | `403 insufficient_scope` |
+| `App\Service\Mcp\McpWriteGuard` | has this identity written too much, and is it on the record? | JSON-RPC error in a `200` |
+
+`App\Security\McpBearerChallenge` is the firewall's `entry_point` **and** its
+`access_denied_handler`, which is what produces the first and third rows. The second row throws
+from `CheckPassportEvent`, and `App\EventListener\McpAuthenticationFailureListener` is what turns
+every authentication failure into the challenge — league's authenticator answers its own failures
+with a bare `WWW-Authenticate: Bearer` and no `resource_metadata`, so without that listener the
+client whose token just expired is the one denied the discovery pointer.
+
+Full procedure, including registering a client: [docs/mcp/oauth-authorization-server.md](../../../docs/mcp/oauth-authorization-server.md).
 
 ### The safe default
 
-With **`MCP_WRITE_TOKEN` unset or shorter than 32 characters**, both write tools refuse every call.
-With **`MCP_IMPORT_ALLOWED_HOSTS` empty**, no URL can be fetched at all. Both are empty in the
-committed `.env`, so a deploy never turns this into a write surface by itself — enabling it is a
-deliberate act in `.env.local` on the server.
+There is **no shared write secret to configure**, and nothing to enable. A deploy with no
+registered OAuth client answers `401` to every write attempt, which is the intended default state.
+With **`MCP_IMPORT_ALLOWED_HOSTS` empty** — which it is in the committed `.env` — no URL can be
+fetched at all either.
 
-They are still listed in `tools/list` when disabled, and hard-refuse instead. The `McpTool`
-attribute is autoconfigured at container-compile time while the token is a runtime value, so a tool
-cannot be unregistered *because the token is missing*. What the per-server `registry:` does allow is
-publishing a tool on one server and not another — which is how the write path gets its own endpoint.
+The write tools are not listed in the public server's `tools/list` any more; they are not on it.
+That is the one thing the per-server `registry:` buys that a runtime check never could: the
+`McpTool` attribute is autoconfigured at container-compile time, so a tool could never be
+unregistered *because* a credential was missing.
 
 ## Writing a tool
 
-`RecipeSearchTool`, `RecipeGetTool` and `CategoryListTool` are the templates for a read tool;
-`RecipeCreateTool` is the template for a write one. The read shape:
+`RecipeSearchTool`, `RecipeGetTool` and `CategoryListTool` (in `App\Mcp\Tool\Read\`) are the
+templates for a read tool; `RecipeCreateTool` (in `App\Mcp\Tool\Write\`) is the template for a
+write one. The read shape:
 
 ```php
 #[McpTool(
@@ -128,13 +181,23 @@ tool may not expose a field the REST API does not" stays checkable.
 
 ## Configuration
 
-`config/packages/mcp.yaml` declares one server, `cookbook`, under `mcp.servers` — the shape since
-bundle 0.13 replaced the single implicit server — whose `registry.tools` publishes the
-`App\Mcp\Tool\` namespace. A pattern that matches nothing fails the build, so renaming that
-namespace cannot silently empty the server.
+`config/packages/mcp.yaml` declares both servers under `mcp.servers` — the shape since bundle 0.13
+replaced the single implicit server — each with its own `registry.tools` namespace prefix. A pattern
+that matches nothing fails the build, so renaming either namespace cannot silently empty a server.
 
-`http.path: /mcp` is explicit and must stay so: the default is `/mcp/<server name>`, which the
+**`http.path` is explicit on both and must stay so**: the default is `/mcp/<server name>`, which the
 `/api/v1` prefix in `config/routes/mcp.yaml` would turn into `/api/v1/mcp/cookbook`.
+
+**The authoring path is not under `/mcp`, deliberately.** `access_control` paths are regexes, so
+anything starting with `/api/v1/mcp` is also matched by the `^/api/v1/mcp` `PUBLIC_ACCESS` rule.
+`security.yaml` places the `^/api/v1/mcp-authoring` rule **above** it, and the distinct name is the
+second line of defence; `McpAuthoringEndpointTest` asserts the ordering held.
+
+`MCP_RESOURCE_URI` is the absolute URL of **the authoring path**, not the public one — the resource
+identifier has to be the thing that answers `401`, so that the 401, the metadata document, the
+client's `resource` parameter, the `aud` claim and the audience check all name one string.
+`McpResourceUriPathTest` asserts its path against the route the bundle really registers, because
+nothing else would: a mismatch refuses every request and logs nothing useful.
 
 `allowed_hosts` is restricted per environment:
 
@@ -146,7 +209,7 @@ namespace cannot silently empty the server.
 A tool that "does not answer" from inside a container is almost always a `Host` header missing from
 that list — check it before debugging the tool itself.
 
-Sessions are file-backed under `%kernel.cache_dir%/mcp-sessions/cookbook` with a 3600s TTL — the
+Sessions are file-backed under `%kernel.cache_dir%/mcp-sessions/<server>` with a 3600s TTL — the
 bundle scopes the store per server, and two servers may not share one, which is a compile-time
 error. `make cc` wipes them; that is expected.
 
@@ -154,13 +217,22 @@ error. `make cc` wipes them; that is expected.
 
 | Variable | Default | Effect when unset |
 |---|---|---|
-| `MCP_WRITE_TOKEN` | empty | Both write tools refuse every call |
 | `MCP_IMPORT_ALLOWED_HOSTS` | empty | `recipe_import_from_url` fetches nothing |
+| `MCP_RESOURCE_URI` | the production URL, in `.env` | nothing boots: the value object refuses an unusable URI |
 
-Rate limits live in `config/packages/rate_limiter.yaml`: `mcp_write` (20/hour, per token
-fingerprint), `mcp_import` (30/hour), `mcp_write_auth` (10 failures/15 min, **per IP**, consumed
-only on failure so ordinary use never locks a client out). They sit on the filesystem-backed
-`cache.rate_limiter` pool, so clearing `var/cache` on deploy resets the windows.
+Rate limits live in `config/packages/rate_limiter.yaml`:
+
+- **`mcp_write`** (20/hour) and **`mcp_import`** (30/hour), keyed on `<oauth client>:<user>` —
+  **not** on the access token, which lives one hour and would hand a caller a fresh budget with
+  every refresh.
+- **`mcp_write_auth`** (10 failures/15 min, **per IP**, consumed only on failure). Its original job
+  was blunting guesses at `MCP_WRITE_TOKEN` and expired with that secret — an RSA-signed JWT is not
+  guessable. It is kept because refusing a bad token still costs a signature verification plus a
+  revocation lookup in Postgres, so an anonymous caller can make this server work; it is consumed
+  by `McpAuthenticationFailureListener`, which answers `429` once the window is empty.
+
+They sit on the filesystem-backed `cache.rate_limiter` pool, so clearing `var/cache` on deploy
+resets the windows.
 
 The audit trail has its own Monolog channel, `mcp_audit`, declared with
 `#[WithMonologChannel('mcp_audit')]` on the guard and writing to `var/log/mcp_audit.log` in dev and
@@ -173,11 +245,18 @@ difference is intentional.
 
 ## Testing
 
-Every tool gets a test in `tests/Mcp/Tool/`, and the transport itself is covered by
-`tests/Api/McpEndpointTest.php`. A new tool without a test is not done.
+Every tool gets a test in `tests/Mcp/Tool/Read/` or `tests/Mcp/Tool/Write/`, mirroring the source
+split. The transports are covered by `tests/Api/McpEndpointTest.php` (the public server) and
+`tests/Api/McpAuthoringEndpointTest.php` (the authoring one). A new tool without a test is not done.
 
-For a write tool the refusals are the point — cover no token, wrong token, and each cap, and assert
-that a rejected payload leaves **nothing** behind. `McpWriteGuardTest` and `SsrfGuardedFetcherTest`
+**Authorization can only be tested at the transport level**, which is why the 401, the 403, the
+wrong-audience refusal and the draft quarantine all live in `McpAuthoringEndpointTest` rather than
+in a tool test: a tool test cannot observe a status code, because an MCP tool error is a JSON-RPC
+object inside a `200`. A write tool's own test sets an authenticated `OAuth2Token` in the token
+storage — the state a call has already reached by the time the tool runs.
+
+For a write tool the refusals are the point — cover each cap, and assert that a rejected payload
+leaves **nothing** behind. `McpWriteGuardTest` and `SsrfGuardedFetcherTest`
 are the models: both build their collaborators by hand with in-memory limiter storage, so the
 limits under test are explicit rather than inherited from config. Integration tests get generous
 limits via `when@test` so they never become order-dependent.

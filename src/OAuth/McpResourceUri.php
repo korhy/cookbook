@@ -11,7 +11,8 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  *
  * This exists as a type rather than a string because **three separate mechanisms compare the value
  * by exact string equality** — the `resource` member of the RFC 9728 document, the `aud` claim
- * stamped on every access token, and phase 5's RFC 8707 audience validation — and a value that is
+ * stamped on every access token, and {@see \App\Security\McpTokenAudienceVerifier}'s RFC 8707
+ * audience validation — and a value that is
  * wrong in any of the ways below does not fail usefully. It rejects every token, with nothing in
  * the logs that says why. An empty value is worse still: `permittedFor('')` writes an empty
  * audience into a perfectly valid-looking JWT without complaining.

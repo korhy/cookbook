@@ -46,6 +46,9 @@ go through the listener.
 **trusted** path — EasyAdmin, the CSV import — default to `published` and behave exactly as they
 always have. Only the MCP write tools create `draft` rows.
 
+It is **independent of authentication**, and OAuth did not retire it: an authorized caller is not a
+reviewed one.
+
 **A draft is invisible outside the back-office.** `App\Doctrine\Extension\PublishedRecipeExtension`
 filters it out of both `/api/v1` operations, and `RecipeRepository::searchByKeywords()` /
 `findOneBySlug()` filter it out of the MCP read tools. Publication is a human action in EasyAdmin,
@@ -88,33 +91,35 @@ in the database but Radiant doesn't see it".
 
 ## The MCP server
 
-`symfony/mcp-bundle` exposes the tools in `src/Mcp/Tool/` at **`/api/v1/mcp`**
-(`config/routes/mcp.yaml` prefixes the bundle's `/mcp` path with `/api/v1`; the route is granted
-`PUBLIC_ACCESS` in `security.yaml`).
+`symfony/mcp-bundle` exposes **two** servers, and the family a tool belongs to decides which one
+(`config/routes/mcp.yaml` prefixes both bundle paths with `/api/v1`):
 
-The tools fall into two families:
+| Tool | Family | Server | Notes |
+|---|---|---|---|
+| `recipe_search` | read | `/api/v1/mcp` | up to 5 published matches |
+| `recipe_get` | read | `/api/v1/mcp` | one published recipe by slug |
+| `category_list` | read | `/api/v1/mcp` | the taxonomy, alphabetically, up to 50 |
+| `ingredient_search` | read | `/api/v1/mcp` | up to 10 matches; use it before creating ingredients |
+| `recipe_create` | **write** | `/api/v1/mcp-authoring` | OAuth `mcp:write`, creates a **draft** |
+| `recipe_import_from_url` | **write-gated read** | `/api/v1/mcp-authoring` | OAuth `mcp:write`; fetches an allowlisted page, stores nothing |
 
-| Tool | Family | Notes |
-|---|---|---|
-| `recipe_search` | read | up to 5 published matches |
-| `recipe_get` | read | one published recipe by slug |
-| `category_list` | read | the taxonomy, alphabetically, up to 50 |
-| `ingredient_search` | read | up to 10 matches; use it before creating ingredients |
-| `recipe_create` | **write** | token-gated, creates a **draft** |
-| `recipe_import_from_url` | **write-gated read** | token-gated; fetches an allowlisted page, stores nothing |
+**The read endpoint is public and unauthenticated** (`PUBLIC_ACCESS` in `security.yaml`), **so every
+argument is untrusted** — never let one reach a query unparameterised. The read tools may not write,
+delete, or expose anything the REST API does not already publish. Authentication does not change
+that rule on the authoring side either: recipe content is external input whoever sent it.
 
-**The endpoint is public and unauthenticated, so every argument is untrusted** — never let one reach
-a query unparameterised. The read tools may not write, delete, or expose anything the REST API does
-not already publish.
-
-The two write-adjacent tools are the deliberate exception, and they are the *only* one: everything
-they do goes through `App\Service\Mcp\McpWriteGuard` (token, brute-force lockout, rate limit,
-audit trail) and lands as a draft. `recipe_import_from_url` never touches the database, and
-`recipe_create` never makes an outbound request — keeping those capabilities in separate classes is
-part of the design. The full contract is in
+The two write-adjacent tools are the deliberate exception, and they are the *only* one. They sit on
+their own endpoint behind the `mcp_authoring` firewall, because an MCP tool error is a JSON-RPC
+object inside a `200` and a `401` or a `403` can only come from the transport. Everything they do
+still goes through `App\Service\Mcp\McpWriteGuard` — now rate limiting and the audit trail, keyed
+on the authenticated OAuth identity — and lands as a draft. `recipe_import_from_url` never touches
+the database, and `recipe_create` never makes an outbound request; keeping those capabilities in
+separate classes is part of the design. **Neither takes a credential as a parameter**, and that is
+load-bearing: the bundle derives the advertised JSON Schema from the signature, so a `token`
+argument is how a secret ends up pasted into a conversation. The full contract is in
 [../technical/mcp.md](../technical/mcp.md); adding a third write tool is a decision for the user.
 
-`allowed_hosts` is restricted per environment in `config/packages/mcp.yaml`
+`allowed_hosts` is restricted per environment in `config/packages/mcp.yaml`, on both servers
 (`api.clementboudinel.fr` in prod; `localhost`, `127.0.0.1` and `cookbook_app` in dev/test). A tool
 that "does not respond" from a container is usually a host missing from that list.
 
@@ -129,15 +134,19 @@ src/
 ├── Entity/         # Doctrine entities — and where #[ApiResource] lives
 ├── Enum/           # IngredientUnit, RecipeStatus
 ├── Exception/      # Exception/Mcp/ — the write-path refusals
-├── EventListener/  # SlugListener, LocaleListener, OAuthConsentListener (the consent screen)
+├── EventListener/  # SlugListener, LocaleListener, OAuthConsentListener (the consent screen),
+│                   #   McpAudienceListener + McpAuthenticationFailureListener (scoped to the
+│                   #   mcp_authoring firewall's own dispatcher), OAuthKeyFailureListener
 ├── Filter/         # custom API Platform filters
 ├── Form/           # form types used by EasyAdmin
-├── Mcp/Tool/       # MCP tools — read tools, plus the two token-gated write tools
+├── Mcp/Tool/       # MCP tools: Read/ on the public server, Write/ on the OAuth-protected one.
+│                   #   The directory IS the server assignment (registry: in mcp.yaml)
 ├── OAuth/          # the authorization server's own classes: the RFC 8414 / RFC 9728 documents,
 │                   #   the decorator that stamps `aud` on an access token, and the
 │                   #   CSRF-validating consent decision behind /oauth2/authorize
 ├── Repository/     # every Doctrine query lives here
-├── Security/       # McpBearerChallenge — the WWW-Authenticate challenge, not wired until phase 5
+├── Security/       # McpBearerChallenge (the WWW-Authenticate challenge, the firewall's entry
+│                   #   point and access-denied handler), McpScopeVoter, McpTokenAudienceVerifier
 ├── Serializer/     # custom normalizers
 ├── Service/        # business logic — Service/Mcp/ (the write guard),
 │                   #   Service/Http/ (the SSRF-guarded fetcher), Service/Recipe/

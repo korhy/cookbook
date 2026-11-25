@@ -91,15 +91,16 @@ only when relevant.
 - **LexikJWTAuthenticationBundle** for API auth · **NelmioCorsBundle** for browser callers
 - **EasyAdmin 4** for the back-office · **VichUploader** for recipe thumbnails ·
   **KnpPaginator** · **Symfony UX Autocomplete** for the ingredient picker
-- **`symfony/mcp-bundle` 1.0** (a beta on the 1.0 line) — a public MCP server at `/api/v1/mcp`: read tools are
-  unauthenticated, the two write-adjacent tools are token-gated and produce drafts
+- **`symfony/mcp-bundle` 1.0** (a beta on the 1.0 line) — **two** MCP servers: a public, anonymous
+  read server at `/api/v1/mcp`, and an OAuth-protected `authoring` server at
+  `/api/v1/mcp-authoring` whose two tools produce drafts
 - **AssetMapper + importmap** — **no `package.json`, no `node_modules`, no build step.** The
   opposite of Radiant; do not import a Webpack habit here
 - **Translations** — real catalogues (`translations/messages.{fr,en}.yaml`), `default_locale: en`,
   `LocaleListener` reading `Accept-Language` and defaulting to `fr`
-- **`symfony/rate-limiter`** — three sliding windows (`mcp_write`, `mcp_import`,
-  `mcp_write_auth`) behind the MCP write guard, on the filesystem-backed `cache.rate_limiter`
-  pool. Note the limits reset whenever `var/cache` goes — which in production is every
+- **`symfony/rate-limiter`** — three sliding windows: `mcp_write` and `mcp_import` behind the MCP
+  write guard, keyed on the authenticated OAuth identity, and `mcp_write_auth` on rejected requests
+  at the authoring endpoint. On the filesystem-backed `cache.rate_limiter` pool. Note the limits reset whenever `var/cache` goes — which in production is every
   container start, since `var/` is not a persistent volume
 - **Linters**: php-cs-fixer (`@Symfony`) and **PHPStan level 5**, both gated in CI. There is **no
   Twig linter and no JS/CSS linter** here
@@ -136,16 +137,19 @@ only when relevant.
    `BREAKING CHANGE`.
 3. **The API is read-only.** Writes happen in EasyAdmin. Adding `POST`/`PUT`/`DELETE` is a design
    decision to raise with the user, not a step in a feature.
-4. **The MCP server is public and unauthenticated; its *read* tools are read-only.** No read tool
-   in `src/Mcp/Tool/` may write, return an unbounded result set, or expose a field the REST API
-   does not.
-   **Two tools are the sanctioned exception** — `recipe_create` and `recipe_import_from_url`. They
-   are gated by `App\Service\Mcp\McpWriteGuard` (shared-secret token, brute-force lockout, rate
-   limit, audit trail) and everything `recipe_create` creates is a **draft**, invisible to
-   `/api/v1` and to the read tools until published in EasyAdmin. With `MCP_WRITE_TOKEN` unset they
-   refuse every call, which is the default. **Adding a third write tool is a security decision to
-   raise with the user, not a step in a feature** — and it must go through the guard and the draft
-   quarantine, never around them.
+4. **There are TWO MCP servers, and the split is the security boundary.** The public one at
+   `/api/v1/mcp` serves `App\Mcp\Tool\Read\` anonymously; no read tool there may write, return an
+   unbounded result set, or expose a field the REST API does not.
+   **The two write tools live elsewhere** — `App\Mcp\Tool\Write\`, on the `authoring` server at
+   `/api/v1/mcp-authoring`, behind OAuth 2.1 (`mcp:write` scope, RFC 8707 audience validation) with
+   rate limiting and the audit trail in `App\Service\Mcp\McpWriteGuard`. Everything
+   `recipe_create` creates is a **draft**, invisible to `/api/v1` and to the read tools until
+   published in EasyAdmin.
+   **A write tool never takes a credential as a parameter** — the bundle derives the advertised
+   JSON Schema from the signature, so that is how a secret ends up pasted into a conversation, and
+   it is the bug the OAuth server was built to fix. **Adding a third write tool is a security
+   decision to raise with the user, not a step in a feature** — and it must go in the `Write`
+   namespace, through the guard and the draft quarantine, never around them.
 5. **Never bypass Symfony's security system**: `#[IsGranted]`, voters or `access_control` — never a
    raw role-string comparison. Remember only the first matching `access_control` rule applies.
 6. **No business logic in controllers**: they orchestrate and delegate to `src/Service/`. The
@@ -156,9 +160,11 @@ only when relevant.
 8. **Strict typing everywhere**: `declare(strict_types=1)` at the top of every PHP file, and typed
    parameters, returns and properties.
 9. **No secrets in code**: `.env` holds non-secret defaults and is committed on purpose; real values
-   live in `.env.local`. Never log or echo the JWT passphrase, a token, or the admin credentials —
-   **`MCP_WRITE_TOKEN` included**. The guard logs an 8-character SHA-256 fingerprint, never the
-   token itself; keep it that way.
+   live in `.env.local`. Never log or echo the JWT passphrase, the OAuth passphrase or encryption
+   key, an access token, or the admin credentials. The guard logs an 8-character SHA-256
+   fingerprint of the access token id, never a credential, and
+   `App\Monolog\SecretRedactingProcessor` strips the presented bearer token out of every record;
+   keep both that way.
 10. **English identifiers everywhere**; user-facing French goes through
     `translations/messages.fr.yaml` — and every new key must be added to **both** catalogues.
 11. **Never set a slug by hand** — `SluggerService` via `SlugListener` owns it.

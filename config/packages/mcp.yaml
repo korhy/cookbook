@@ -1,19 +1,27 @@
 mcp:
-    # One server for now. The 0.13 configuration keys replaced the single implicit server of
-    # 0.12 (`app`, `client_transports`, `http`) with this map, and the server key is its
-    # advertised name unless `name` overrides it.
+    # TWO servers, and the split is a security boundary rather than a tidy-up.
+    #
+    # An MCP tool error is a JSON-RPC object inside a 200 response, so a server whose tools are
+    # mixed can only ever refuse a caller *in the body* — there is no way to answer `401` with a
+    # `WWW-Authenticate` challenge, or `403 insufficient_scope`, for one tool and `200` for
+    # another on the same URL. RFC 9728 discovery and the MCP authorization specification are both
+    # built on those HTTP statuses, so the write path needs an endpoint of its own. That endpoint
+    # is what `security.yaml`'s `mcp_authoring` firewall protects.
+    #
+    # Which tools land where is decided by the `registry:` namespace prefix below, which is why
+    # src/Mcp/Tool/ is split into Read/ and Write/: the directory a tool sits in *is* its server,
+    # so the two cannot drift apart, and a new tool cannot reach the public endpoint by accident.
+    # The bundle fails the build on a pattern matching nothing, so neither namespace can be
+    # renamed into silence.
     servers:
+        # The public, unauthenticated read server. Its path, its tool names and their shapes are a
+        # contract Radiant and every configured MCP client depends on — none of it moves.
         cookbook:
             version: '1.0.0'
-            # Read tools are public and unauthenticated; the two write-adjacent tools (recipe_create,
-            # recipe_import_from_url) are gated by MCP_WRITE_TOKEN and refuse every call when it is unset.
-            description: 'MCP server for the Cookbook API. Recipe, ingredient and category search are public and read-only; creating a recipe requires a write token and produces an unpublished draft.'
+            description: 'MCP server for the Cookbook API. Recipe, ingredient and category search, public and read-only.'
 
-            # What this server exposes. A pattern ending in a backslash is a namespace prefix, and
-            # the bundle fails the build on a pattern that matches nothing — so renaming the
-            # namespace cannot silently empty the server.
             registry:
-                tools: ['App\Mcp\Tool\']
+                tools: ['App\Mcp\Tool\Read\']
 
             transports:
                 stdio: true
@@ -38,6 +46,40 @@ mcp:
                 store: file
                 ttl: 3600
 
+        # The authoring server: recipe_create and recipe_import_from_url, behind OAuth 2.1.
+        # Reaching it takes an access token carrying the `mcp:write` scope and this server's own
+        # canonical URI in `aud`. Everything recipe_create writes is still a draft.
+        authoring:
+            version: '1.0.0'
+            description: 'Authoring server for the Cookbook API. Requires an OAuth 2.1 access token with the mcp:write scope. Created recipes are drafts, invisible to the public API until an administrator publishes them.'
+
+            registry:
+                tools: ['App\Mcp\Tool\Write\']
+
+            transports:
+                # NO STDIO, deliberately. A stdio caller arrives through a pipe with no HTTP
+                # request, so there is no Authorization header, no firewall and no identity to
+                # authorize, rate-limit or record in the audit trail — turning it on here would
+                # publish an unauthenticated write path beside the authorized one.
+                stdio: false
+                http: true
+
+            http:
+                # Explicit for the same reason as above, and NOT a path *under* /mcp:
+                # `access_control` matches by regex, so anything starting with `/api/v1/mcp` is
+                # also matched by the `^/api/v1/mcp` PUBLIC_ACCESS rule. The rule for this path is
+                # placed above that one in security.yaml, and the distinct name is the second line
+                # of defence.
+                #
+                # This path is also THE canonical resource URI (MCP_RESOURCE_URI, reaching services
+                # as the app.mcp_resource_uri parameter). McpResourceUriPathTest asserts they agree,
+                # because an OAuth flow where they disagree fails with nothing useful in the logs.
+                path: /mcp-authoring
+                allowed_hosts: '%env(csv:default:default_mcp_allowed_hosts:MCP_ALLOWED_HOSTS)%'
+            session:
+                store: file
+                ttl: 3600
+
 when@dev:
     mcp:
         servers:
@@ -46,10 +88,16 @@ when@dev:
                     # cookbook_app: the container's own name on the shared `korhy_net` network, so a
                     # containerised client (Radiant, another stack) is not rejected on the Host header.
                     allowed_hosts: ['localhost', '127.0.0.1', 'cookbook_app']
+            authoring:
+                http:
+                    allowed_hosts: ['localhost', '127.0.0.1', 'cookbook_app']
 
 when@test:
     mcp:
         servers:
             cookbook:
+                http:
+                    allowed_hosts: ['localhost', '127.0.0.1']
+            authoring:
                 http:
                     allowed_hosts: ['localhost', '127.0.0.1']

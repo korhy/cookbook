@@ -174,8 +174,13 @@ secrets et ne figurent pas dans ce dépôt.
 | `MCP_RESOURCE_URI` | *optionnel* : `.env` porte déjà la valeur de production. À ne renseigner que pour la surcharger (domaine Coolify avant bascule DNS) |
 | `MAILER_DSN` | SMTP réel, ou `null://null` |
 | `MESSENGER_TRANSPORT_DSN` | `doctrine://default?auto_setup=0` |
-| `MCP_WRITE_TOKEN` | vide désactive les deux outils d'écriture MCP — c'est le défaut |
 | `MCP_IMPORT_ALLOWED_HOSTS` | allowlist d'hôtes pour `recipe_import_from_url`, vide = aucun import |
+
+> **Il n'y a plus de `MCP_WRITE_TOKEN`.** Le chemin d'écriture MCP est protégé par le serveur
+> d'autorisation OAuth 2.1 (`/api/v1/mcp-authoring`), pas par un secret partagé : les variables qui
+> le gouvernent sont `OAUTH_PASSPHRASE` et `OAUTH_ENCRYPTION_KEY` ci-dessus. Un déploiement sans
+> client OAuth enregistré répond `401` à toute tentative d'écriture, ce qui est l'état par défaut
+> voulu.
 
 > **`TRUSTED_PROXIES` n'est pas optionnel.** Sans lui, Symfony ne voit que l'adresse privée du
 > proxy en HTTP simple, et `App\Serializer\RecipeNormalizer` construit les URL absolues des
@@ -192,9 +197,9 @@ secrets et ne figurent pas dans ce dépôt.
 **L'entrypoint refuse de générer la paire tant que la variable est vide**, et l'écrit dans les
 logs en nommant la variable manquante. C'est une garantie plus forte qu'une procédure de
 rattrapage : le mauvais état n'est jamais créé. Il *saute* l'étape, il ne fait pas échouer le
-boot — l'API entière, Radiant compris, n'a pas à tomber pour un sous-système que rien ne consomme
-avant la phase 5. Seuls les endpoints `/oauth2/*` sont alors hors service, et le premier
-redémarrage après avoir renseigné la variable crée la bonne paire, sans rien à réparer.
+boot — l'API entière, Radiant compris, n'a pas à tomber pour un sous-système dont l'API de lecture
+publique ne dépend pas. Seuls `/oauth2/*` et `/api/v1/mcp-authoring` sont alors hors service, et le
+premier redémarrage après avoir renseigné la variable crée la bonne paire, sans rien à réparer.
 
 Reste deux cas que ce garde-fou ne couvre pas, et c'est le second qui est piégeux :
 
@@ -242,10 +247,11 @@ pour relire cette section. Le correctif serait alors une **entrée `paths` suppl
 **surtout pas un élargissement de `CORS_ALLOW_ORIGIN`**, qui appartient à Radiant et à `/api/`.
 `/oauth2/authorize` continuerait de n'avoir besoin de rien.
 
-Un point à garder pour la phase 5, pendant qu'on y est : `/api/` *est* couvert par nelmio, mais
-`expose_headers` ne liste que `Link`. Le jour où un défi `WWW-Authenticate` est renvoyé par
-`/api/v1/mcp`, un appelant navigateur ne pourra pas le lire sans l'ajouter à cette liste. Sans
-objet aujourd'hui — le client est un CLI — mais inutile de le redécouvrir.
+Un point à garder en tête : `/api/` *est* couvert par nelmio, mais `expose_headers` ne liste que
+`Link`. Or `/api/v1/mcp-authoring` renvoie désormais bien un défi `WWW-Authenticate` — un appelant
+navigateur ne pourra pas le lire sans l'ajouter à cette liste. Sans objet aujourd'hui, le client
+étant un CLI qui lit ses en-têtes sans passer par la politique d'origine : élargir `expose_headers`
+est une décision à prendre le jour où un client navigateur existe, pas avant.
 
 ### `TRUSTED_PROXIES` et le serveur d'autorisation
 

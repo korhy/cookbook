@@ -9,7 +9,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * The invariants of the one value three mechanisms compare by exact string equality: the RFC 9728
- * document's `resource` member, the `aud` claim on every access token, and phase 5's audience
+ * document's `resource` member, the `aud` claim on every access token, and the resource server's
+ * audience
  * validation.
  *
  * A wrong value here does not fail loudly on its own — it rejects every token with nothing in the

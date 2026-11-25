@@ -17,12 +17,17 @@ use Symfony\Component\Security\Http\EntryPoint\AuthenticationEntryPointInterface
  * The `WWW-Authenticate` challenge for the MCP write path: how a client that holds no usable token
  * is told where to get one.
  *
- * **NOT WIRED YET — this is not dead code.** Phase 3 builds the discovery layer only; phase 5
- * creates the `mcp_authoring` firewall and attaches this class to it as both `entry_point` and
- * `access_denied_handler`. Until then nothing calls it, and `tests/Security/McpBearerChallengeTest`
- * is what proves it answers correctly. Do not delete it as unused, and do not wire it here: the
- * firewall it belongs to does not exist, and attaching a challenge to the current firewalls would
- * change how `/api/v1/mcp` answers today.
+ * It is the `mcp_authoring` firewall's **`entry_point`** (the 401) and its
+ * **`access_denied_handler`** (the 403), wired in `config/packages/security.yaml`. Attaching it to
+ * any other firewall would change how `/api/v1/mcp` answers, and that endpoint is a public
+ * contract.
+ *
+ * **The entry point does not cover every 401 on that firewall**, which is why
+ * {@see \App\EventListener\McpAuthenticationFailureListener} exists. An entry point runs only
+ * when no authenticator claimed the request — here, when there is no `Authorization: Bearer`
+ * header. League's `OAuth2Authenticator` claims anything that has one and answers its own failures
+ * with a bare `WWW-Authenticate: Bearer`, so that listener substitutes this challenge for every
+ * authentication failure instead.
  *
  * The one member that matters is `resource_metadata`. RFC 9728 §5.1 makes it the pointer a client
  * follows from a 401 to the protected resource document, and from there to the authorization
@@ -63,8 +68,8 @@ final readonly class McpBearerChallenge implements AuthenticationEntryPointInter
             'error' => 'insufficient_scope',
             'error_description' => 'The access token does not carry the scope this operation requires.',
             // Every scope this server knows about, which today is the single one the write path
-            // needs. Phase 5 is where a voter decides per operation; when it does, the scope it
-            // asked for is what belongs here.
+            // needs — and the one App\Security\McpScopeVoter asks for. Should a second scope ever
+            // exist, this should name the scope the refused operation required, not the catalogue.
             'scope' => implode(' ', $this->metadata->scopesSupported()),
         ]);
     }

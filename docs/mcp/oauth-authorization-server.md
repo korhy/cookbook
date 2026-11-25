@@ -1,14 +1,18 @@
 # The OAuth 2.1 authorization server
 
 Cookbook hosts its own authorization server, built on **`league/oauth2-server-bundle` 2.0**, to
-protect the MCP write path. It replaces the shared secret that `recipe_create` and
-`recipe_import_from_url` take as a tool argument today — a token passed as an argument ends up
-pasted in clear in the conversation, which is the whole reason for this work.
+protect the MCP write path.
 
-**This document covers phases 2, 3 and 4: the server is installed, wired, discoverable, and it now
-asks a human before issuing anything — and nothing uses it yet.** The MCP write tools still go
-through `MCP_WRITE_TOKEN` and `App\Service\Mcp\McpWriteGuard`, and they keep doing so until
-phase 5.
+**It is now the only way to write.** `MCP_WRITE_TOKEN` is gone from the repository, and so is the
+`string $token` parameter the two write tools used to take. That parameter was the actual bug: the
+MCP bundle derives a tool's advertised JSON Schema from its PHP signature, so declaring the
+credential as an *argument* announced it to the client as a required field — and a human ended up
+pasting the secret in clear into a conversation to make the tool work. The credential now travels
+in an `Authorization` header, which a client can hold without a person ever reading it.
+
+The write tools live on a **second MCP server** at `/api/v1/mcp-authoring`, behind a firewall of
+their own. The public read server at `/api/v1/mcp` is untouched: same path, same four tools, still
+anonymous.
 
 Related: [the client registration decision](../decisions/mcp-oauth-client-registration.md) ·
 [where `aud` can be stamped](../decisions/mcp-oauth-audience-claim.md)
@@ -23,7 +27,9 @@ Related: [the client registration decision](../decisions/mcp-oauth-client-regist
 | `POST /oauth2/token` | none (`security: false`) | Must stay reachable with no session, or an expired client can never refresh |
 | `POST /oauth2/device-code` | none | Declared by the bundle, inert: the device code grant is off, so league answers `unsupported_grant_type` |
 | `GET /.well-known/oauth-authorization-server` | none (`security: false`) | RFC 8414 metadata — [below](#discovery) |
-| `GET /.well-known/oauth-protected-resource[/api/v1/mcp]` | none (`security: false`) | RFC 9728 metadata — [below](#discovery) |
+| `GET /.well-known/oauth-protected-resource[/api/v1/mcp-authoring]` | none (`security: false`) | RFC 9728 metadata — [below](#discovery) |
+| `GET\|POST\|DELETE /api/v1/mcp-authoring` | **`mcp_authoring` firewall**, scope `mcp:write` | The MCP write tools — [below](#the-protected-endpoint) |
+| `GET\|POST\|DELETE /api/v1/mcp` | `PUBLIC_ACCESS` | The public read server, unchanged |
 
 Grants enabled: **`authorization_code` + `refresh_token`, and nothing else.** Client credentials
 defaults to *on* in the bundle and is explicitly turned off — it would issue an `mcp:write` token
@@ -82,12 +88,21 @@ Three mechanisms compare it **by exact string equality**, so they have to agree 
 
 1. the `resource` member of the RFC 9728 document, which the client reads;
 2. the `aud` claim stamped on every access token (below);
-3. the RFC 8707 audience validation of phase 5.
+3. the RFC 8707 audience validation in `App\Security\McpTokenAudienceVerifier`.
 
-Hence the rules, enforced in the provider's constructor rather than left to a comment: an absolute
-`http(s)` URL of `/api/v1/mcp`, no query, no fragment, no credentials, **no trailing slash**. A
+Hence the rules, enforced in `App\OAuth\McpResourceUri`'s constructor rather than left to a
+comment: an absolute `http(s)` URL, no query, no fragment, no credentials, **no trailing slash**. A
 malformed value throws on the first request that needs it, because the alternative is a server that
 rejects every token with nothing in the logs that says why.
+
+**It is the URL of `/api/v1/mcp-authoring`, not of the public read endpoint.** The resource
+identifier has to be the thing that answers `401`, so that every link in the chain names one
+string: the challenge points at the metadata document, whose `resource` member is this value, which
+the client sends back as its `resource` parameter, which lands in `aud`, which is compared here.
+Pointing it at `/api/v1/mcp` would be self-consistent and still wrong — a client would be told to
+get a token for a URL it never calls. The path appears in four places that cannot check each other
+(`http.path` in `mcp.yaml`, the firewall `pattern`, the `access_control` rule, and this variable),
+so `tests/OAuth/McpResourceUriPathTest.php` asserts it against the route the bundle registers.
 
 The **issuer is derived from it**: the same URL with its path dropped. The authorization server and
 the resource server are the same application, and RFC 8414 locates an issuer's metadata at
@@ -98,7 +113,8 @@ contradict each other.
 ### Why the bare `/.well-known/oauth-protected-resource` is served as well
 
 RFC 9728 §3.1 inserts the resource's path after the well-known segment when the resource
-identifier has one, which gives the canonical `/.well-known/oauth-protected-resource/api/v1/mcp`.
+identifier has one, which gives the canonical
+`/.well-known/oauth-protected-resource/api/v1/mcp-authoring`.
 The bare form is served too because it is what a client that treats the resource identifier as an
 origin will try, and this application hosts exactly one protected resource — there is no second
 document the bare path could be confused with, and `resource` names the MCP endpoint either way.
@@ -109,27 +125,111 @@ about a resource we do not protect, and answering would tell a client this docum
 ### The `aud` claim
 
 `App\OAuth\AudienceStampingAccessTokenRepository` decorates
-`league.oauth2_server.repository.access_token` so that every issued access token names the MCP
-endpoint in its audience. league ships no RFC 8707 support and hard-codes the *client* identifier
-as `aud`, so without this there is nothing for phase 5 to validate. The full reasoning, including
-the three hooks that do not work, is in
+`league.oauth2_server.repository.access_token` so that every issued access token names the
+authoring endpoint in its audience. league ships no RFC 8707 support and hard-codes the *client*
+identifier as `aud`, so without this there would be nothing to validate. The full reasoning,
+including the three hooks that do not work, is in
 [the audience decision](../decisions/mcp-oauth-audience-claim.md).
 
-The claim is an **array of two** — `["<resource uri>", "<client id>"]` — because lcobucci's
-`permittedFor()` appends with dedup instead of replacing, so league's own call adds to ours. RFC
-7519 §4.1.3 allows that and a resource server validates by membership.
+The claim is an **array of two, `["<client id>", "<resource uri>"]`, and the order is
+load-bearing.** `BearerTokenValidator` recovers the client identifier from `$claims->get('aud')[0]`
+positionally (BearerTokenValidator.php:137), with no check of what it finds there. Seeding the
+resource URI first — which is what phase 3 did — therefore made every authenticated request report
+the resource URI as its OAuth client. Harmless while nothing authenticated; wrong the moment this
+endpoint went live, since the audit trail and the write path's rate-limit key are both built on that
+identity. `App\OAuth\AudienceAwareAccessToken` now seeds both entries in that order, and league's
+own `permittedFor()` call appends nothing because lcobucci merges with dedup. RFC 7519 §4.1.3
+allows the array form, and a resource server validates by membership.
 
-### The `WWW-Authenticate` challenge — written, not wired
+---
+
+## The protected endpoint
+
+`/api/v1/mcp-authoring` is a **second MCP server**, declared beside the public one in
+`config/packages/mcp.yaml` with `App\Mcp\Tool\Write\` as its `registry.tools` and
+**`stdio: false`** — a piped caller has no Authorization header, so there would be no identity to
+authorize, meter or record.
+
+It exists as a separate endpoint for one concrete reason: **an MCP tool error is a JSON-RPC object
+inside a `200`.** A server with mixed tools can only ever refuse a caller in the body, and `401`
+with a challenge, `403 insufficient_scope` and RFC 9728 discovery are all transport answers.
+
+Four layers stand in front of a write, each answering a different question:
+
+| Layer | Question | Refusal |
+|---|---|---|
+| `mcp_authoring` firewall (`oauth2: true`) | is this a token this server signed, unexpired and unrevoked? | `401` + challenge |
+| `App\Security\McpTokenAudienceVerifier` | was it issued for **this** resource? (RFC 8707, exact equality) | `401 invalid_token` |
+| `App\Security\McpScopeVoter` via `access_control` | does the grant carry `mcp:write`? | `403 insufficient_scope` |
+| `App\Service\Mcp\McpWriteGuard` | has this identity written too much, and is it on the record? | JSON-RPC error in a `200` |
+
+### The scope check is a voter, not a role
+
+league projects a token's scopes onto roles by string concatenation, so `mcp:write` becomes the role
+**`ROLE_OAUTH2_MCP:WRITE`** — colon included, `strtoupper`'d. That identifier is an artefact of a
+vendor's `sprintf`, and writing it into `security.yaml` would hard-code a spelling we do not own,
+duplicate the scope name in a silently-transformed second form, and fail *open-ended* if a future
+`role_prefix` setting changed it: the rule would stop matching and deny everything, with nothing to
+say why. `App\Security\McpScopeVoter` names the scope once and reads it from the bundle's typed
+accessor instead, answering the `MCP_WRITE` attribute.
+
+`#[IsGranted]` was the other candidate and does not work here: an MCP tool is not a controller, so
+the attribute — resolved by Symfony's controller argument metadata — would be decoration that never
+runs. The quietest possible way to ship an unprotected write tool.
+
+### The access_control ordering trap
+
+`access_control` paths are **regexes**, so `^/api/v1/mcp` matches `/api/v1/mcp-authoring` too. The
+authoring rule is therefore placed **above** the public `PUBLIC_ACCESS` one; below it, the write
+endpoint would inherit `PUBLIC_ACCESS`, the firewall would authenticate a bearer token that nothing
+then required, and nothing would look wrong from the outside. The firewall itself is declared above
+`api` for the same class of reason: firewalls match in declaration order, and `^/api` would
+otherwise hand the endpoint to the Lexik JWT authenticator.
+
+`McpAuthoringEndpointTest` asserts both orderings held.
+
+### Rate limiting and the audit trail outlived the secret
+
+`McpWriteGuard` no longer decides *whether* a caller may write. It kept the two jobs the firewall
+does not do:
+
+- **Rate limiting**, keyed on `<oauth client>:<user>` — not on the access token, which lives one
+  hour and would hand a caller a fresh budget with every refresh. A valid grant is not a licence to
+  create 10,000 drafts, and OAuth has nothing to say about volume.
+- **The audit trail** on the `mcp_audit` channel: the tool, the client, the user it acted for, the
+  caller's IP, and an 8-character SHA-256 fingerprint of the **access token id** — never a
+  credential. Authorization proves a caller may write; only the record says what they did.
+
+The third limiter, `mcp_write_auth`, was there to blunt guesses at the shared secret and lost that
+job with it — an RSA-signed JWT is not guessable. It is kept with a narrower purpose: refusing a bad
+token costs a signature verification plus a revocation lookup in Postgres every time, so an
+anonymous caller can make this server work by presenting garbage.
+`App\EventListener\McpAuthenticationFailureListener` consumes it per client IP and answers `429`
+once the window is empty.
+
+### The draft quarantine is unchanged, and that is the point
+
+Everything `recipe_create` writes is still a `draft`, invisible to `/api/v1` and to the read tools
+until a human publishes it in EasyAdmin. That defence is independent of authentication and keeps its
+full meaning now that OAuth is in front of it: **an authorized caller is not a reviewed one.**
+
+### The `WWW-Authenticate` challenge
 
 `App\Security\McpBearerChallenge` answers `401` with
 `WWW-Authenticate: Bearer …, resource_metadata="<the RFC 9728 URL>"`, and `403` with
 `error="insufficient_scope"`. That `resource_metadata` pointer is what gets a client from one
-failed request to the authorization server.
+failed request to the authorization server, with no URL configured by hand.
 
-**Nothing calls it yet, and that is deliberate.** Phase 5 creates the `mcp_authoring` firewall and
-attaches it as both `entry_point` and `access_denied_handler`; wiring it earlier would change how
-`/api/v1/mcp` answers today. `tests/Security/McpBearerChallengeTest.php` is what keeps it honest in
-the meantime — it is not dead code.
+It is wired as the `mcp_authoring` firewall's **`entry_point` and its `access_denied_handler`** —
+the two halves produce the `401` and the `403` respectively.
+
+**That covers requests with no token, and not much else**, which is why
+`App\EventListener\McpAuthenticationFailureListener` exists. An entry point only runs when no
+authenticator claimed the request. League's `OAuth2Authenticator` claims anything with a `Bearer `
+header and answers its own failures, returning `new Response($message, 401, ['WWW-Authenticate' =>
+'Bearer'])` — a bare challenge with no pointer. So the client whose hour-old token has just
+expired, the one that needs the pointer most, is exactly the one league would not give it to. The
+listener runs on `LoginFailureEvent`, whose response wins, and replaces it with the real challenge.
 
 ---
 
@@ -308,9 +408,9 @@ Two runtime environment variables in Coolify: **`OAUTH_PASSPHRASE`** and
 **So the entrypoint refuses to generate a pair while the variable is empty**, and logs the missing
 variable by name. Not creating the wrong key is a stronger guarantee than documenting how to
 replace it. It *skips* rather than failing the boot — halting would take the whole API down,
-Radiant included, for a subsystem nothing consumes before phase 5 — so the API stays up, only
-`/oauth2/*` cannot issue a token, and the first boot after the variable is set creates the pair
-with nothing to repair.
+Radiant included, and the public read API does not depend on OAuth — so the API stays up, only
+`/oauth2/*` cannot issue a token and `/api/v1/mcp-authoring` cannot be reached, and the first boot
+after the variable is set creates the pair with nothing to repair.
 
 Two cases the guard cannot cover, the second being the dangerous one:
 
@@ -390,17 +490,42 @@ If a future client version changes the path, **read the `redirect_uri` off the f
 `/oauth2/authorize` request and register that verbatim** rather than guessing — a mismatch here
 fails the flow with `invalid_client` and no useful hint.
 
-### Wiring a client (phase 5 onward)
+### Wiring a client
 
-Once the write path actually consumes the token, the server is added like this:
+**Two separate MCP servers, and only one of them needs OAuth.** The read tools stay anonymous, so
+add them with no credential at all:
 
 ```bash
-claude mcp add --transport http cookbook https://api.clementboudinel.fr/api/v1/mcp --client-id cookbook-mcp-authoring --callback-port 3118
+claude mcp add --transport http cookbook https://api.clementboudinel.fr/api/v1/mcp
 ```
 
-No `--client-secret`: the client is public. The first call opens the browser at
-`/oauth2/authorize`, the admin logs in with the existing form login, and the token comes back to
-`http://localhost:3118/callback`.
+The authoring server is a second entry, pointed at the protected path:
+
+```bash
+claude mcp add --transport http cookbook-authoring https://api.clementboudinel.fr/api/v1/mcp-authoring --client-id cookbook-mcp-authoring --callback-port 3118
+```
+
+No `--client-secret`: the client is public. The first call to an authoring tool opens the browser at
+`/oauth2/authorize`, the admin logs in with the existing form login, approves on the consent screen,
+and the token comes back to `http://localhost:3118/callback`. **Nothing is typed into the
+conversation at any point** — which is the whole objective.
+
+Adding the authoring server alone also works: a client that discovers it gets the `401`, follows the
+`resource_metadata` pointer and finds the authorization server without any of this being configured
+by hand. The flags above only pin what league matches by exact string.
+
+#### Migrating from `MCP_WRITE_TOKEN`
+
+A client configured against the old shared secret **stops working** and has to be reconfigured:
+
+1. Remove the old entry (`claude mcp remove cookbook`) and re-add both servers as above.
+2. Register the client once on the server, if it is not registered yet — see
+   [the pre-registered client](#the-pre-registered-client).
+3. Delete `MCP_WRITE_TOKEN` from `.env.local` and from Coolify's environment. Nothing reads it any
+   more, and leaving a stale secret lying about is the thing this work set out to stop.
+
+Calls that used to pass a `token` argument now fail with an unknown-parameter error from the SDK:
+the parameter is gone from the advertised schema, deliberately.
 
 ---
 
@@ -408,12 +533,22 @@ No `--client-secret`: the client is public. The first call opens the browser at
 
 | Phase | Missing piece |
 |---|---|
-| 5 | The `mcp_authoring` firewall, `McpScopeVoter`, wiring `McpBearerChallenge`, the RFC 8707 audience validation, and dropping `string $token` from the two write tools |
-| 6 | End-to-end tests of the whole flow |
+| 6 | End-to-end tests of the whole browser flow — a real client driving `/oauth2/authorize`, the consent screen and `/oauth2/token`, then calling an authoring tool with the token that comes back |
 
-**Phase 4 is done** — see [the consent screen](#the-consent-screen). One thing phase 5 inherits,
-noted here because it is already visible: `POST /oauth2/token` answers a bare **`500`** when the
-keypair is missing, instead of an OAuth error document. Nothing about phase 4 changed that.
+Everything the write path needs at runtime is in place and covered: `tests/Api/McpAuthoringEndpointTest.php`
+proves the `401` with its `resource_metadata` pointer, the `403 insufficient_scope`, the refusal of a
+signed token minted for another audience, the draft quarantine and the audit trail, with tokens
+minted through the real issuing path. What phase 6 adds is the half no test here exercises: the
+*browser* leg, from authorization request to code to token.
+
+**`POST /oauth2/token` no longer answers a bare `500` when the keypair cannot be read.**
+`League\OAuth2\Server\CryptKey` reads and decrypts the key in its *constructor*, so a missing file
+or a wrong `OAUTH_PASSPHRASE` fails while the service is being instantiated, before any controller
+code runs. `App\EventListener\OAuthKeyFailureListener` now turns that into league's own
+`{"error": "server_error"}` envelope — the shape a client already parses — and logs the real message,
+which carries the key path, to the error log instead of returning it. It recognises the failure by
+the file it was thrown from, resolved by reflection on `CryptKey`, rather than by matching a message
+whose wording is a vendor's to change.
 
 **Phase 7 is done**, out of numeric order on purpose. The documents above publish a
 `token_endpoint`, and until the volume existed production could not mint a token from it:

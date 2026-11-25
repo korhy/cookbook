@@ -2,26 +2,33 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Mcp\Tool;
+namespace App\Tests\Mcp\Tool\Write;
 
 use App\Entity\Category;
 use App\Entity\Ingredient;
 use App\Entity\Recipe;
 use App\Enum\RecipeStatus;
-use App\Mcp\Tool\RecipeCreateTool;
+use App\Mcp\Tool\Write\RecipeCreateTool;
 use App\Repository\IngredientRepository;
 use App\Repository\RecipeRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use League\Bundle\OAuth2ServerBundle\Security\Authentication\Token\OAuth2Token;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Core\User\InMemoryUser;
 
 /**
- * recipe_create is the only write on a public MCP server, so most of these are refusal tests:
- * what the tool declines matters more than what it accepts.
+ * recipe_create is the only tool that writes, so most of these are refusal tests: what the tool
+ * declines matters more than what it accepts.
+ *
+ * The *authorization* of a call is no longer this class's business — it belongs to the
+ * `mcp_authoring` firewall and is covered end to end by App\Tests\Api\McpAuthoringEndpointTest,
+ * which is the only place a 401 or a 403 can actually be observed. What is set up here is the
+ * state a call has already reached by the time the tool runs: an authenticated OAuth token in
+ * storage, which App\Service\Mcp\McpWriteGuard reads for its rate limit and its audit entry.
  */
 final class RecipeCreateToolTest extends KernelTestCase
 {
-    private const TOKEN = 'test_only_mcp_write_token_0123456789abcdef';
-
     private EntityManagerInterface $em;
     private RecipeCreateTool $tool;
     private RecipeRepository $recipes;
@@ -36,6 +43,8 @@ final class RecipeCreateToolTest extends KernelTestCase
         $this->recipes = self::getContainer()->get(RecipeRepository::class);
         $this->ingredients = self::getContainer()->get(IngredientRepository::class);
         $this->suffix = substr(uniqid(), -6);
+
+        $this->authenticate();
 
         $category = new Category();
         $category->setName('Draft test category '.$this->suffix);
@@ -69,12 +78,19 @@ final class RecipeCreateToolTest extends KernelTestCase
         $this->assertNull($this->recipes->findOneBySlug($result['slug']));
     }
 
-    public function testMissingTokenIsRefusedAndWritesNothing(): void
+    /**
+     * There is no credential parameter left to get wrong — removing it is the whole point of the
+     * OAuth work — so the refusal this covers is the defence-in-depth one: a call that somehow
+     * arrives with nothing authenticated must write nothing. Reaching this state means the
+     * firewall stopped protecting the endpoint, and the tool must not make that silent.
+     */
+    public function testACallWithNothingAuthenticatedIsRefusedAndWritesNothing(): void
     {
+        self::getContainer()->get(TokenStorageInterface::class)->setToken(null);
+
         $before = $this->recipeCount();
 
         $result = ($this->tool)(
-            token: '',
             title: 'Unauthorized cake '.$this->suffix,
             description: 'Should never be stored.',
             ingredients: [['name' => 'Draft test flour '.$this->suffix]],
@@ -83,19 +99,6 @@ final class RecipeCreateToolTest extends KernelTestCase
 
         $this->assertSame('Write access denied.', $result['error']);
         $this->assertSame($before, $this->recipeCount());
-    }
-
-    public function testWrongTokenIsRefused(): void
-    {
-        $result = ($this->tool)(
-            token: 'not-the-write-token-but-long-enough-to-pass-length',
-            title: 'Unauthorized cake '.$this->suffix,
-            description: 'Should never be stored.',
-            ingredients: [['name' => 'Draft test flour '.$this->suffix]],
-            instructions: ['Mix.'],
-        );
-
-        $this->assertSame('Write access denied.', $result['error']);
     }
 
     public function testExistingIngredientsAreReusedRatherThanDuplicated(): void
@@ -146,7 +149,6 @@ final class RecipeCreateToolTest extends KernelTestCase
         // "spam" trips the BanWord constraint on Recipe::$title, which fires at entity validation,
         // i.e. after the new ingredients have been persisted inside the transaction.
         $result = ($this->tool)(
-            token: self::TOKEN,
             title: 'A spam cake '.$this->suffix,
             description: 'Rejected by the BanWord constraint.',
             ingredients: [['name' => 'Draft test rollback '.$this->suffix]],
@@ -220,15 +222,26 @@ final class RecipeCreateToolTest extends KernelTestCase
     }
 
     /**
-     * @param array<int, array<string, mixed>>|null $ingredients
-     * @param array<int, string>|null               $instructions
-     *
      * @return array<string, mixed>
      */
+    /**
+     * The identity a request carries by the time a tool runs: the single pre-registered public
+     * client, acting for the Admin account, with the one scope this server issues.
+     */
+    private function authenticate(): void
+    {
+        self::getContainer()->get(TokenStorageInterface::class)->setToken(new OAuth2Token(
+            new InMemoryUser('admin', null, ['ROLE_ADMIN']),
+            'test-access-token-id',
+            'cookbook-mcp-authoring',
+            ['mcp:write'],
+            'ROLE_OAUTH2_',
+        ));
+    }
+
     private function create(?array $ingredients = null, ?array $instructions = null, ?string $category = null): array
     {
         return ($this->tool)(
-            token: self::TOKEN,
             title: 'Draft test cake '.$this->suffix,
             description: 'A cake created through the MCP write path.',
             ingredients: $ingredients ?? [['name' => 'Draft test flour '.$this->suffix, 'quantity' => 200, 'unit' => 'g']],

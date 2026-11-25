@@ -13,9 +13,16 @@ paths:
 
 ## Firewalls
 
-Three firewalls, in `config/packages/security.yaml`:
+Five firewalls, in `config/packages/security.yaml`, and **the declaration order matters**: the
+first matching one runs, so `mcp_authoring` has to precede `api`.
 
 - **`dev`** — profiler and assets, security off.
+- **`oauth2_public`** (`^/(oauth2/token|\.well-known/)`) — `security: false`, so nothing can turn
+  these into a redirect to the login form. A client whose token expired must be able to
+  re-discover the server and refresh unauthenticated.
+- **`mcp_authoring`** (`^/api/v1/mcp-authoring`) — **stateless**, `oauth2: true`, with
+  `App\Security\McpBearerChallenge` as both `entry_point` and `access_denied_handler`. The MCP
+  write path. See [mcp.md](mcp.md).
 - **`api`** (`^/api`) — **stateless**, `json_login` on `/api/login_check`, then `jwt`. Tokens are
   issued and verified by **LexikJWTAuthenticationBundle** with an RSA keypair.
 - **`admin`** — form login (`app_login`) with CSRF enabled, plus remember-me.
@@ -25,21 +32,29 @@ Three firewalls, in `config/packages/security.yaml`:
 Order matters — **only the first matching rule applies**:
 
 ```yaml
-- { path: ^/api/login_check, roles: PUBLIC_ACCESS }
-- { path: ^/api/v1/docs,     roles: PUBLIC_ACCESS }
-- { path: ^/api/v1/mcp,      roles: PUBLIC_ACCESS }
-- { path: ^/api,             roles: ROLE_ADMIN }
-- { path: ^/login,           roles: PUBLIC_ACCESS }
-- { path: ^/admin,           roles: ROLE_ADMIN }
+- { path: ^/api/login_check,      roles: PUBLIC_ACCESS }
+- { path: ^/api/v1/docs,          roles: PUBLIC_ACCESS }
+- { path: ^/api/v1/mcp-authoring, roles: MCP_WRITE }
+- { path: ^/api/v1/mcp,           roles: PUBLIC_ACCESS }
+- { path: ^/api,                  roles: ROLE_ADMIN }
+- { path: ^/oauth2/authorize,     roles: IS_AUTHENTICATED_REMEMBERED }
+- { path: ^/login,                roles: PUBLIC_ACCESS }
+- { path: ^/admin,                roles: ROLE_ADMIN }
 ```
 
-Two things follow that are easy to get wrong:
+Three things follow that are easy to get wrong:
 
 1. **The REST API is not public.** `^/api` requires `ROLE_ADMIN`, so every consumer — Radiant
    included — authenticates through `/api/login_check` and carries a Bearer token. Any new
    `/api/…` route inherits that unless a more specific rule is added *above* the `^/api` line.
 2. **`/api/v1/mcp` and `/api/v1/docs` are genuinely public.** Anything reachable through them is
    world-readable. See [mcp.md](mcp.md).
+3. **`^/api/v1/mcp-authoring` must stay ABOVE `^/api/v1/mcp`.** These are regexes, so the shorter
+   pattern matches the longer path too: one line in the wrong order and the MCP write endpoint
+   inherits `PUBLIC_ACCESS`, the firewall authenticates a bearer token that nothing then requires,
+   and nothing looks wrong from the outside. `MCP_WRITE` is an attribute answered by
+   `App\Security\McpScopeVoter`, not a role —
+   `tests/Api/McpAuthoringEndpointTest.php` asserts the ordering held.
 
 Never widen this map to make something "work". If a route needs to be public, say so explicitly and
 place the rule deliberately.
@@ -50,6 +65,14 @@ place the rule deliberately.
   (`in_array('ROLE_ADMIN', $user->getRoles())`) in business code.
 - `ROLE_ADMIN` is the only meaningful role; `Admin` is the single account entity, resolved on
   **`username`**.
+- **OAuth scopes are checked through a voter, not a role.**
+  `league/oauth2-server-bundle` projects `mcp:write` onto the role `ROLE_OAUTH2_MCP:WRITE` by
+  `strtoupper`-ing a prefix onto the scope name. That spelling is a vendor's `sprintf`, not ours,
+  and it fails *open-ended* if their `role_prefix` ever changes — the rule stops matching and
+  denies everything with nothing to say why. `App\Security\McpScopeVoter` names the scope once
+  and reads it from the bundle's typed accessor. `#[IsGranted]` is not an option on an MCP tool
+  either: it is resolved by controller argument metadata, so on a class the MCP bundle invokes it
+  would never run.
 
 ## Keypairs — there are two, on purpose
 
@@ -98,7 +121,8 @@ reasoning is written out in
   or a commit message.
 - **`.claude/settings.json` denies the file tools** (`Read`, `Edit`, `Write`) on `.env.local`,
   `.env.*.local`, `config/jwt/**` and `config/oauth/**`, so an assistant cannot pull a token or a
-  private key into a transcript by accident — which is exactly how `MCP_WRITE_TOKEN` once ended up in one. It is a
+  private key into a transcript by accident — which is exactly how the old `MCP_WRITE_TOKEN` once
+  ended up in one, before the OAuth server removed the shared secret entirely. It is a
   guard against accidents, **not a boundary**: the rules do not cover `Bash`, and
   `cat .env.local` or `docker exec cookbook_app env` walks straight past them. What actually
   protects the secret is the rule above — it has no reason to enter a conversation at all. One

@@ -19,17 +19,26 @@ recommends; the work is then done by `/new-api-resource`, `/new-mcp-tool`, or by
    probably expect; properties in a `read` group that should not be public; a documented filter
    whose `getDescription()` is missing or wrong, so the OpenAPI output lies; write operations that
    crept in; a collection operation without a pagination cap.
-2. **MCP contract** ([mcp.md](../../rules/technical/mcp.md)) — the endpoint is **public and
-   unauthenticated**. Check every tool in `src/Mcp/Tool/` for: any write (persist/flush/remove), an
-   unbounded result set, a field not exposed by the REST API, an argument reaching a query
-   unparameterised, a `description` that does not state the tool's limits.
+2. **MCP contract** ([mcp.md](../../rules/technical/mcp.md)) — there are **two servers**, and the
+   namespace a tool sits in is what assigns it to one. Check that `src/Mcp/Tool/Read/` and
+   `src/Mcp/Tool/Write/` still match the `registry:` prefixes in `config/packages/mcp.yaml`, and
+   that no write tool has drifted into `Read/`.
+   The read server is **public and unauthenticated**: check every tool in `src/Mcp/Tool/Read/` for
+   any write (persist/flush/remove), an unbounded result set, a field not exposed by the REST API,
+   an argument reaching a query unparameterised, a `description` that does not state the tool's
+   limits.
+   For `src/Mcp/Tool/Write/`: **a credential parameter in any `__invoke()` signature is a finding
+   in its own right** — the bundle derives the advertised JSON Schema from the signature, which is
+   how a secret reaches a conversation. Also check `McpWriteGuard` is the first statement, and that
+   anything created is a draft.
 3. **Typing** ([backend-php.md](../../rules/technical/backend-php.md)) — files missing
    `declare(strict_types=1)`. Report them as **one** finding with the list attached, never one per
    file, ordered by risk (services and filters first, entities last). Also: untyped
    params/returns, classes that should be `final`.
 4. **Security** ([security.md](../../rules/technical/security.md)) — the `access_control` ordering
-   (only the first match applies, and `^/api` sits above nothing but the three `PUBLIC_ACCESS`
-   lines); any new `/api/…` route that inherited `ROLE_ADMIN` when it should not have, or the
+   (only the first match applies; these are regexes, so `^/api/v1/mcp-authoring` must sit **above**
+   `^/api/v1/mcp` or the write endpoint silently inherits `PUBLIC_ACCESS`, and the `mcp_authoring`
+   firewall must be declared above `api`); any new `/api/…` route that inherited `ROLE_ADMIN` when it should not have, or the
    reverse; raw role-string comparisons instead of `#[IsGranted]`; unbound parameters in
    `src/Filter/`; anywhere the JWT, the passphrase or the admin credentials could reach a log, an
    exception message or a template; `CORS_ALLOW_ORIGIN` widened past what dev needs.

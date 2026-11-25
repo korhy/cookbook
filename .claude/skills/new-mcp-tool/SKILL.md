@@ -1,6 +1,6 @@
 ---
 name: new-mcp-tool
-description: Scaffold an MCP tool in src/Mcp/Tool — the McpTool attribute, a typed invoke signature, a repository-backed query, the array shape and its PHPUnit test. Defaults to a read-only tool; a write tool must go through McpWriteGuard and the draft quarantine. Use when the user asks to add an MCP tool, expose something to MCP clients, extend the MCP server, or "/new-mcp-tool".
+description: Scaffold an MCP tool in src/Mcp/Tool/Read (the public server) — the McpTool attribute, a typed invoke signature, a repository-backed query, the array shape and its PHPUnit test. Defaults to a read-only tool; a write tool belongs in src/Mcp/Tool/Write, behind OAuth, and must go through McpWriteGuard and the draft quarantine. Use when the user asks to add an MCP tool, expose something to MCP clients, extend the MCP server, or "/new-mcp-tool".
 ---
 
 # /new-mcp-tool — add a tool to the Cookbook MCP server
@@ -22,21 +22,35 @@ Two rules hold whatever you are building:
 
 Then pick the family:
 
-**A read tool is the default.** Unauthenticated, no persist/flush/delete/dispatch, published rows
-only. Follow steps 1-7 below.
+**The namespace a tool lands in decides which server publishes it**, because each server's
+`registry:` in `config/packages/mcp.yaml` is a namespace prefix:
+
+| Namespace | Server | Endpoint | Security |
+|---|---|---|---|
+| `App\Mcp\Tool\Read\` | `cookbook` | `/api/v1/mcp` | anonymous |
+| `App\Mcp\Tool\Write\` | `authoring` | `/api/v1/mcp-authoring` | OAuth 2.1, `mcp:write` |
+
+Getting this wrong publishes a write tool on the public endpoint. There is no runtime check that
+would catch it — the directory *is* the configuration.
+
+**A read tool is the default.** It goes in `src/Mcp/Tool/Read/`: unauthenticated, no
+persist/flush/delete/dispatch, published rows only. Follow steps 1-7 below.
 
 **A write tool is not something to scaffold on request.** Two exist (`recipe_create`,
 `recipe_import_from_url`) because the user took that decision explicitly, with the security design
 recorded in `.claude/rules/technical/mcp.md`. If this request implies a mutation:
 
-1. **Stop and raise it with the user.** Say plainly that the MCP endpoint is public, that adding a
-   write surface is a security decision rather than an implementation detail, and that the existing
-   two are a sanctioned exception and not a precedent.
-2. **Only once they have agreed**, build it by reusing every existing layer — never a parallel one:
-   `McpWriteGuard` as the first statement of `__invoke()`, a validated DTO in `src/DTO/Mcp/`, a
-   service in `src/Service/` that owns the transaction, `RecipeStatus::Draft` (or the equivalent
-   quarantine) on anything created, and explicit caps on every collection and string.
-   `RecipeCreateTool` + `RecipeDraftFactory` are the worked example — read them before writing.
+1. **Stop and raise it with the user.** Say plainly that adding a write surface is a security
+   decision rather than an implementation detail, and that the existing two are a sanctioned
+   exception and not a precedent.
+2. **Only once they have agreed**, build it in `src/Mcp/Tool/Write/` by reusing every existing
+   layer — never a parallel one: **no credential parameter in the signature** (the bundle derives
+   the advertised JSON Schema from it, which is exactly how the old shared secret ended up pasted
+   into a conversation; authorization belongs to the firewall), `McpWriteGuard` as the first
+   statement of `__invoke()`, a validated DTO in `src/DTO/Mcp/`, a service in `src/Service/` that
+   owns the transaction, `RecipeStatus::Draft` (or the equivalent quarantine) on anything created,
+   and explicit caps on every collection and string. `RecipeCreateTool` + `RecipeDraftFactory` are
+   the worked example — read them before writing.
 3. **If the tool makes an outbound request**, it goes through `SsrfGuardedFetcher` and
    `assertMayFetch()`. Never call an HTTP client directly with a caller-supplied URL.
 
@@ -54,12 +68,12 @@ If any of this is in doubt, raise it before generating code.
 
 Do not invent a shape. `src/Mcp/Tool/` holds worked examples:
 
-- `CategoryListTool` — no argument, full (small) list.
-- `RecipeSearchTool` — one string argument, capped result set.
-- `RecipeGetTool` — lookup by identifier.
-- `IngredientSearchTool` — capped search, `final`, with `declare(strict_types=1)`.
-- `RecipeCreateTool` — the write shape: guard first, nested `#[Schema]` arguments, delegation to a
-  service.
+- `Read/CategoryListTool` — no argument, full (small) list.
+- `Read/RecipeSearchTool` — one string argument, capped result set.
+- `Read/RecipeGetTool` — lookup by identifier.
+- `Read/IngredientSearchTool` — capped search, `final`, with `declare(strict_types=1)`.
+- `Write/RecipeCreateTool` — the write shape: no credential parameter, guard first, nested
+  `#[Schema]` arguments, delegation to a service.
 
 Match whichever is closest.
 
@@ -87,7 +101,7 @@ repository under `src/Repository/`:
 
 declare(strict_types=1);
 
-namespace App\Mcp\Tool;
+namespace App\Mcp\Tool\Read;
 
 use App\Entity\Recipe;
 use App\Repository\RecipeRepository;
@@ -134,17 +148,22 @@ Autoconfiguration registers it: no manual service declaration.
 
 ## 5. Test it
 
-Add `tests/Mcp/Tool/<Name>ToolTest.php`, following the existing tests in that directory. Cover:
+Add `tests/Mcp/Tool/Read/<Name>ToolTest.php` (or `Write/`, mirroring the source split), following
+the existing tests in that directory. Cover:
 
 - the nominal case;
 - an argument that matches nothing (empty result, not an error);
 - **the cap** — that a broad query returns at most N items.
 
-For a write tool the refusals are the point. Additionally cover: no token, wrong token, each cap,
-and that a rejected payload leaves **nothing** behind in the database. `RecipeCreateToolTest` and
-`McpWriteGuardTest` are the models.
+For a write tool the refusals are the point. Additionally cover each cap and that a rejected
+payload leaves **nothing** behind in the database. Its test must put an authenticated `OAuth2Token`
+in the token storage, which is the state a call has already reached by the time the tool runs —
+`RecipeCreateToolTest` and `McpWriteGuardTest` are the models.
 
-`tests/Api/McpEndpointTest.php` covers the transport; you do not need to duplicate it.
+**Authorization itself is not testable from a tool test**, because an MCP tool error is a JSON-RPC
+object inside a `200`. The 401, the 403 and the audience refusal live in
+`tests/Api/McpAuthoringEndpointTest.php`; `tests/Api/McpEndpointTest.php` covers the public
+transport. You do not need to duplicate either.
 
 ## 6. Verify
 

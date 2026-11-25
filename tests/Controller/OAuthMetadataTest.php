@@ -22,7 +22,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class OAuthMetadataTest extends WebTestCase
 {
-    private const RESOURCE_URI = 'http://localhost/api/v1/mcp';
+    private const RESOURCE_URI = 'http://localhost/api/v1/mcp-authoring';
 
     private const ISSUER = 'http://localhost';
 
@@ -60,7 +60,7 @@ final class OAuthMetadataTest extends WebTestCase
 
     public function testProtectedResourceMetadataDocument(): void
     {
-        $this->client->request('GET', '/.well-known/oauth-protected-resource/api/v1/mcp');
+        $this->client->request('GET', '/.well-known/oauth-protected-resource/api/v1/mcp-authoring');
 
         self::assertResponseIsSuccessful();
         self::assertResponseHeaderSame('Content-Type', 'application/json');
@@ -104,7 +104,7 @@ final class OAuthMetadataTest extends WebTestCase
      */
     public function testBothDocumentsAreReachableWithoutAuthentication(): void
     {
-        foreach (['/.well-known/oauth-authorization-server', '/.well-known/oauth-protected-resource/api/v1/mcp'] as $path) {
+        foreach (['/.well-known/oauth-authorization-server', '/.well-known/oauth-protected-resource/api/v1/mcp-authoring'] as $path) {
             $this->client->request('GET', $path);
 
             self::assertResponseIsSuccessful(\sprintf('%s must answer anonymously', $path));

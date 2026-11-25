@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Mcp\Tool;
+namespace App\Mcp\Tool\Write;
 
 use App\Exception\Mcp\McpWriteDeniedException;
 use App\Exception\Mcp\UrlFetchRejectedException;
@@ -19,14 +19,18 @@ use Mcp\Capability\Attribute\McpTool;
  * makes no outbound requests. The caller reviews what comes back and then calls recipe_create with
  * it — which also means a human-in-the-loop client can show the extracted recipe before anything
  * is stored.
+ *
+ * It carries no credential parameter either, for the reason spelled out in {@see RecipeCreateTool}:
+ * a credential in a tool signature is a credential in the advertised schema.
  */
 #[McpTool(
     name: 'recipe_import_from_url',
     description: <<<'TEXT'
         Extract a recipe from a web page so it can be reviewed and then passed to recipe_create.
 
-        This tool only reads: it stores nothing. It requires the same write token as recipe_create,
-        because it makes this server fetch an external page.
+        This tool only reads: it stores nothing. It lives on the same OAuth-protected authoring
+        endpoint as recipe_create, and needs the same mcp:write scope, because it makes this
+        server fetch an external page.
 
         Only https:// URLs on the server's import allowlist can be fetched, and only pages that
         publish a schema.org/Recipe as JSON-LD can be read — there is no HTML scraping fallback.
@@ -46,10 +50,10 @@ final class RecipeImportFromUrlTool
     /**
      * @return array<string, mixed>
      */
-    public function __invoke(string $token, string $url): array
+    public function __invoke(string $url): array
     {
         try {
-            $this->guard->assertMayFetch($token, 'recipe_import_from_url');
+            $this->guard->assertMayFetch('recipe_import_from_url');
         } catch (McpWriteDeniedException $e) {
             return ['error' => $e->getMessage()];
         }
