@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\OAuth\DiscoveryMetadataProvider;
+use App\OAuth\McpResourceUri;
 use App\Security\McpBearerChallenge;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -95,7 +96,7 @@ final class McpBearerChallengeTest extends TestCase
 
         return new McpBearerChallenge(new DiscoveryMetadataProvider(
             $urlGenerator,
-            'https://api.example.test/api/v1/mcp',
+            new McpResourceUri('https://api.example.test/api/v1/mcp'),
             ['authorization_code', 'refresh_token'],
             ['mcp:write'],
         ));

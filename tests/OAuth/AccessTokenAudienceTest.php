@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\OAuth;
 
 use App\OAuth\AudienceStampingAccessTokenRepository;
+use App\OAuth\McpResourceUri;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;
 use Lcobucci\JWT\UnencryptedToken;
@@ -75,6 +76,27 @@ final class AccessTokenAudienceTest extends KernelTestCase
     }
 
     /**
+     * The regression that motivated the value object: this class used to take the raw
+     * `app.mcp_resource_uri` parameter, with the validation living only in the metadata provider.
+     * So a malformed value made the two documents answer 500 while this path went on issuing
+     * tokens stamped with a broken audience — and an **empty** value was worse, because
+     * `permittedFor('')` writes an empty audience into a valid-looking JWT and raises nothing at
+     * all. The issuing path must refuse it too, not just the document path.
+     */
+    public function testTheTokenIssuingPathCannotBeBuiltWithAnUnusableResourceUri(): void
+    {
+        $this->expectException(\LogicException::class);
+
+        $repository = new AudienceStampingAccessTokenRepository(
+            $this->createStub(AccessTokenRepositoryInterface::class),
+            new EventDispatcher(),
+            new McpResourceUri(''),
+        );
+
+        self::fail(\sprintf('%s accepted an unusable resource URI and would stamp it into `aud`.', $repository::class));
+    }
+
+    /**
      * @param array<non-empty-string, mixed> $extraClaims
      */
     private function issueAccessToken(array $extraClaims = []): UnencryptedToken
@@ -94,7 +116,7 @@ final class AccessTokenAudienceTest extends KernelTestCase
             // Only getNewToken() is under test; persistence belongs to the decorated repository.
             $this->createStub(AccessTokenRepositoryInterface::class),
             $dispatcher,
-            self::RESOURCE_URI,
+            new McpResourceUri(self::RESOURCE_URI),
         );
 
         $client = $this->createStub(ClientEntityInterface::class);

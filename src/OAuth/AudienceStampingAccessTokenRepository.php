@@ -11,7 +11,6 @@ use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
 use Symfony\Component\DependencyInjection\Attribute\AsDecorator;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\DependencyInjection\Attribute\AutowireDecorated;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -39,8 +38,12 @@ final readonly class AudienceStampingAccessTokenRepository implements AccessToke
         #[AutowireDecorated]
         private AccessTokenRepositoryInterface $decorated,
         private EventDispatcherInterface $eventDispatcher,
-        #[Autowire(param: 'app.mcp_resource_uri')]
-        private string $resourceUri,
+        // The validated value object, never the raw `app.mcp_resource_uri` parameter. Taking the
+        // parameter directly is what this class used to do, and it was wrong in a way that only
+        // showed on the quiet side: a malformed value made the metadata documents answer 500
+        // while this path kept minting tokens, and an empty one stamped an empty `aud` through
+        // `permittedFor('')` without raising anything at all.
+        private McpResourceUri $resourceUri,
     ) {
     }
 
@@ -59,7 +62,7 @@ final readonly class AudienceStampingAccessTokenRepository implements AccessToke
         $event = new AccessTokenExtraClaimsResolveEvent($clientEntity, $scopes, $userIdentifier);
         $this->eventDispatcher->dispatch($event, OAuth2Events::ACCESS_TOKEN_EXTRA_CLAIMS_RESOLVE);
 
-        $accessToken = new AudienceAwareAccessToken($this->resourceUri, $event->getExtraClaims());
+        $accessToken = new AudienceAwareAccessToken($this->resourceUri->value(), $event->getExtraClaims());
         $accessToken->setClient($clientEntity);
 
         if (null !== $userIdentifier && '' !== $userIdentifier) {

@@ -73,8 +73,21 @@ final class OAuthDiscoveryPass implements CompilerPassInterface
             return;
         }
 
-        $container->setParameter(self::GRANT_TYPES_PARAMETER, $this->enabledGrantTypes($container));
-        $container->setParameter(self::SCOPES_PARAMETER, $this->availableScopes($container));
+        $grantTypes = $this->enabledGrantTypes($container);
+        $scopes = $this->availableScopes($container);
+
+        // An empty list means this pass stopped recognising how the bundle expresses its own
+        // configuration — a release renaming `enableGrantType`, or moving to tagged services,
+        // would leave both loops matching nothing. The chain does hold without this check
+        // (OAuthMetadataTest asserts the whole document body, and `build-images` only runs after
+        // a green CI, so nothing reaches the registry), but it would be found through a puzzling
+        // assertion diff. Failing here names the cause instead.
+        if ([] === $grantTypes || [] === $scopes) {
+            throw new \LogicException(\sprintf('%s derived no %s from the OAuth bundle\'s configuration. The bundle most likely changed how it declares them, so the published metadata would be empty — read how its extension builds the AuthorizationServer and ScopeManager definitions, and update this pass.', self::class, [] === $grantTypes ? 'grant type' : 'scope'));
+        }
+
+        $container->setParameter(self::GRANT_TYPES_PARAMETER, $grantTypes);
+        $container->setParameter(self::SCOPES_PARAMETER, $scopes);
     }
 
     /**

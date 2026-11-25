@@ -21,11 +21,9 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  * container parameters {@see OAuthDiscoveryPass} reads off the bundle's own definitions, and every
  * absolute URL from the one configured resource URI.
  *
- * **The issuer is the origin of that resource URI**, with its path dropped. The authorization
- * server and the resource server are the same Symfony application here, and RFC 8414 locates an
- * issuer's metadata at `<issuer>/.well-known/oauth-authorization-server` — a document served from
- * the root therefore describes an issuer with no path component. Deriving it instead of
- * configuring it separately removes the one way these documents could contradict each other.
+ * **The issuer is the origin of that resource URI**, derived by {@see McpResourceUri} along with
+ * the path RFC 9728 appends to the well-known segment. Both documents therefore agree by
+ * construction, and so does the `aud` claim stamped on the other side of the server.
  */
 final class DiscoveryMetadataProvider
 {
@@ -56,52 +54,31 @@ final class DiscoveryMetadataProvider
      */
     private const BEARER_METHODS_SUPPORTED = ['header'];
 
-    private readonly string $issuer;
-
-    private readonly string $resourcePath;
-
     /**
      * @param list<string> $grantTypesSupported
      * @param list<string> $scopesSupported
      */
     public function __construct(
         private readonly UrlGeneratorInterface $urlGenerator,
-        #[Autowire(param: 'app.mcp_resource_uri')]
-        private readonly string $resourceUri,
+        // A validated value object, not the raw parameter. The invariants belong to the value
+        // itself rather than to this class, because the token-issuing path needs them just as
+        // much — and used to go without.
+        private readonly McpResourceUri $resourceUri,
         #[Autowire(param: OAuthDiscoveryPass::GRANT_TYPES_PARAMETER)]
         private readonly array $grantTypesSupported,
         #[Autowire(param: OAuthDiscoveryPass::SCOPES_PARAMETER)]
         private readonly array $scopesSupported,
     ) {
-        $parts = parse_url($this->resourceUri);
-
-        // A misconfigured MCP_RESOURCE_URI is not a cosmetic problem: the value ends up in the
-        // `aud` claim and in the published document, both compared by exact string equality, so a
-        // stray trailing slash rejects every token with nothing in the logs to explain it. Fail
-        // here instead, on the first request that needs the value.
-        if (false === $parts
-            || !\in_array($parts['scheme'] ?? null, ['http', 'https'], true)
-            || !isset($parts['host'])
-            || isset($parts['query'])
-            || isset($parts['fragment'])
-            || isset($parts['user'])
-            || str_ends_with($this->resourceUri, '/')
-        ) {
-            throw new \LogicException(\sprintf('MCP_RESOURCE_URI must be the absolute http(s) URL of the MCP endpoint, with no query, no fragment and no trailing slash — got "%s".', $this->resourceUri));
-        }
-
-        $this->issuer = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
-        $this->resourcePath = $parts['path'] ?? '';
     }
 
     public function issuer(): string
     {
-        return $this->issuer;
+        return $this->resourceUri->issuer();
     }
 
     public function resourceUri(): string
     {
-        return $this->resourceUri;
+        return $this->resourceUri->value();
     }
 
     /**
@@ -121,7 +98,7 @@ final class DiscoveryMetadataProvider
     public function authorizationServerMetadata(): array
     {
         return [
-            'issuer' => $this->issuer,
+            'issuer' => $this->issuer(),
             'authorization_endpoint' => $this->absoluteUrl('oauth2_authorize'),
             'token_endpoint' => $this->absoluteUrl('oauth2_token'),
             'response_types_supported' => $this->responseTypesSupported(),
@@ -145,8 +122,8 @@ final class DiscoveryMetadataProvider
     public function protectedResourceMetadata(): array
     {
         return [
-            'resource' => $this->resourceUri,
-            'authorization_servers' => [$this->issuer],
+            'resource' => $this->resourceUri->value(),
+            'authorization_servers' => [$this->issuer()],
             'scopes_supported' => $this->scopesSupported,
             'bearer_methods_supported' => self::BEARER_METHODS_SUPPORTED,
         ];
@@ -159,7 +136,7 @@ final class DiscoveryMetadataProvider
      */
     public function protectedResourceMetadataUrl(): string
     {
-        return $this->absoluteUrl('oauth2_metadata_protected_resource', ['resourcePath' => $this->resourcePath]);
+        return $this->absoluteUrl('oauth2_metadata_protected_resource', ['resourcePath' => $this->resourceUri->path()]);
     }
 
     /**
@@ -176,7 +153,7 @@ final class DiscoveryMetadataProvider
      */
     public function describesResourcePath(string $resourcePath): bool
     {
-        return '' === $resourcePath || $resourcePath === $this->resourcePath;
+        return '' === $resourcePath || $resourcePath === $this->resourceUri->path();
     }
 
     /**
@@ -220,6 +197,6 @@ final class DiscoveryMetadataProvider
      */
     private function absoluteUrl(string $route, array $parameters = []): string
     {
-        return $this->issuer.$this->urlGenerator->generate($route, $parameters);
+        return $this->issuer().$this->urlGenerator->generate($route, $parameters);
     }
 }
