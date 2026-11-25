@@ -5,9 +5,10 @@ protect the MCP write path. It replaces the shared secret that `recipe_create` a
 `recipe_import_from_url` take as a tool argument today — a token passed as an argument ends up
 pasted in clear in the conversation, which is the whole reason for this work.
 
-**This document covers phases 2 and 3: the server is installed, wired and now discoverable — and
-nothing uses it yet.** The MCP write tools still go through `MCP_WRITE_TOKEN` and
-`App\Service\Mcp\McpWriteGuard`, and they keep doing so until phase 5.
+**This document covers phases 2, 3 and 4: the server is installed, wired, discoverable, and it now
+asks a human before issuing anything — and nothing uses it yet.** The MCP write tools still go
+through `MCP_WRITE_TOKEN` and `App\Service\Mcp\McpWriteGuard`, and they keep doing so until
+phase 5.
 
 Related: [the client registration decision](../decisions/mcp-oauth-client-registration.md) ·
 [where `aud` can be stamped](../decisions/mcp-oauth-audience-claim.md)
@@ -18,7 +19,7 @@ Related: [the client registration decision](../decisions/mcp-oauth-client-regist
 
 | Endpoint | Security | Notes |
 |---|---|---|
-| `GET\|POST /oauth2/authorize` | `IS_AUTHENTICATED_REMEMBERED` | Bounces to the admin form login and back. The consent screen is phase 4 |
+| `GET\|POST /oauth2/authorize` | `IS_AUTHENTICATED_REMEMBERED` | Bounces to the admin form login and back, then shows [the consent screen](#the-consent-screen) |
 | `POST /oauth2/token` | none (`security: false`) | Must stay reachable with no session, or an expired client can never refresh |
 | `POST /oauth2/device-code` | none | Declared by the bundle, inert: the device code grant is off, so league answers `unsupported_grant_type` |
 | `GET /.well-known/oauth-authorization-server` | none (`security: false`) | RFC 8414 metadata — [below](#discovery) |
@@ -129,6 +130,112 @@ failed request to the authorization server.
 attaches it as both `entry_point` and `access_denied_handler`; wiring it earlier would change how
 `/api/v1/mcp` answers today. `tests/Security/McpBearerChallengeTest.php` is what keeps it honest in
 the meantime — it is not dead code.
+
+---
+
+## The consent screen
+
+`/oauth2/authorize` shows the Admin what is being asked and waits for an answer. Three classes and
+one template:
+
+| File | Role |
+|---|---|
+| `App\EventListener\OAuthConsentListener` | Listens on `OAuth2Events::AUTHORIZATION_REQUEST_RESOLVE` and turns a decision into an HTTP outcome |
+| `App\OAuth\ConsentDecider` | Reads the decision off the request, and **validates the CSRF token** |
+| `App\OAuth\ConsentDecision` | The four states: `Pending`, `Approved`, `Denied`, `InvalidCsrfToken` |
+| `templates/oauth2/consent.html.twig` | The screen itself, through the `oauth2_consent.*` catalogue keys |
+
+The screen shows the client's **name** (not just `cookbook-mcp-authoring`, which is not something a
+human recognises), its identifier underneath so the claim is verifiable, the requested scope both
+as a translated sentence and as the raw `mcp:write`, and two buttons: authorize and refuse.
+
+### The default was not "approve" — it was "deny"
+
+Worth stating plainly, because the phase plan assumed the opposite. `league/oauth2-server-bundle`
+ships **no listener** on `AUTHORIZATION_REQUEST_RESOLVE` (its only `EventListener/` entry is
+`AddClientDefaultScopesListener`, on `PRE_SAVE_CLIENT`), and
+`AuthorizationRequestResolveEvent::$authorizationResolution` initialises to
+`AUTHORIZATION_DENIED`. `AuthCodeGrant::completeAuthorizationRequest` then throws `accessDenied`.
+
+So before this phase, a *valid* request from a logged-in Admin was redirected straight back to the
+client with `error=access_denied`. **The endpoint could never issue a code at all.** This phase is
+therefore not only what makes the gate visible; it is what makes the authorization endpoint work.
+
+That also means the fail-safe direction is the right one by construction: if the listener returns
+without resolving anything — the `null === $request` branch — the request is denied, not granted.
+
+### Why the form posts back to the full request URI
+
+`AuthCodeGrant::validateAuthorizationRequest` reads **every** parameter through
+`getQueryStringParameter` — `client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`,
+`code_challenge_method`. Never the body. The controller re-validates from scratch on the POST, so
+the form's `action` is `app.request.requestUri`: the original query string, verbatim. The body
+carries nothing but the CSRF token and which button was pressed.
+
+Moving a parameter into a hidden field instead would fail with `invalid_request` and no hint
+pointing at the cause.
+
+### `setResponse()` versus `resolveAuthorization()`
+
+These are the two ways out of the event, and they are not interchangeable:
+
+- **`setResponse($response)`** — `AuthorizationController` returns it *verbatim* and never reaches
+  the grant. Nothing is issued, nothing is redirected, and the client learns nothing. This is the
+  consent screen, and the rejection of a bad CSRF token.
+- **`resolveAuthorization(bool)`** — the grant runs. `true` issues the code and redirects;
+  `false` makes league build the RFC 6749 §4.1.2.1 redirect, `error=access_denied` with the
+  client's `state` preserved.
+
+A refusal therefore lands on the **client's** `redirect_uri`, not on an error page of ours. That is
+the spec's requirement and also the only behaviour a client can recover from.
+
+### CSRF — the security point of this phase
+
+**Any** POST to `/oauth2/authorize` must carry a valid token, whatever it claims to submit. The
+Admin's approval is presented throughout this project as *the* gate on the MCP write path, so a
+page on another origin able to POST an approval would remove that gate silently, while every
+document still said it was there.
+
+A rejected submission is answered with the screen again at **`400`** — never with a redirect. The
+client must learn nothing from a forged POST, and the Admin gets a form with a fresh token.
+`InvalidCsrfToken` is deliberately a state of its own rather than an alias for `Denied`: a forged
+request must not be able to cause a redirect to a client either.
+
+> **The token id `oauth2_consent` is deliberately *absent* from
+> `framework.csrf_protection.stateless_token_ids`** in `config/packages/csrf.yaml`.
+> `SameOriginCsrfTokenManager` delegates any id not listed there to the session-backed manager,
+> which is what we want: the stateless double-submit check needs a JavaScript snippet to plant the
+> cookie, and this screen has none — while a session is guaranteed, since the caller has just
+> authenticated against the stateful `admin` firewall to get here. Adding the id to that list would
+> break the form, and the failure would look like a CSRF bug rather than a configuration one.
+
+### Translations
+
+The keys are `oauth2_consent.*` in **both** `translations/messages.fr.yaml` and
+`messages.en.yaml`. The scope sentence is keyed by the scope identifier with `:` swapped for `_`
+(`oauth2_consent.scope.mcp_write`), because a colon cannot nest as a YAML key — and the raw
+identifier is printed beside the sentence so a scope with no key yet is still readable instead of
+rendering as a bare key.
+
+`App\EventListener\LocaleListener` picks the locale from `Accept-Language`. A request with **no**
+header renders in `en` (`framework.default_locale`), which is why
+`tests/Controller/OAuth2ConsentTest.php` drives the header explicitly rather than relying on the
+default — otherwise it would only ever have covered one catalogue.
+
+### What the tests guard
+
+`tests/Controller/OAuth2ConsentTest.php`, six tests:
+
+1. a valid request **shows the screen** rather than resolving itself;
+2. approving redirects to the client with a `code` and the original `state`;
+3. refusing redirects with `error=access_denied`, the `state` preserved and no `code`;
+4. a submission with an invalid CSRF token is rejected — `400`, **no** `Location` header at all;
+5. two locales, asserting that no key renders raw in either catalogue.
+
+The test registers its own public client through `ClientManagerInterface` (the test environment
+persists `oauth2_*` in memory) and calls `disableReboot()` — `KernelBrowser` reboots the kernel
+between requests by default, which would throw away both the registered client and the session
+holding the CSRF token between the GET and the POST.
 
 ---
 
@@ -301,9 +408,12 @@ No `--client-secret`: the client is public. The first call opens the browser at
 
 | Phase | Missing piece |
 |---|---|
-| 4 | The consent page on `/oauth2/authorize` |
 | 5 | The `mcp_authoring` firewall, `McpScopeVoter`, wiring `McpBearerChallenge`, the RFC 8707 audience validation, and dropping `string $token` from the two write tools |
 | 6 | End-to-end tests of the whole flow |
+
+**Phase 4 is done** — see [the consent screen](#the-consent-screen). One thing phase 5 inherits,
+noted here because it is already visible: `POST /oauth2/token` answers a bare **`500`** when the
+keypair is missing, instead of an OAuth error document. Nothing about phase 4 changed that.
 
 **Phase 7 is done**, out of numeric order on purpose. The documents above publish a
 `token_endpoint`, and until the volume existed production could not mint a token from it:
