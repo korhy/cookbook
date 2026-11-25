@@ -146,6 +146,13 @@ make oauth-keys
 `--skip-if-exists`, so it is safe to re-run. `make up` does the same thing on first boot
 (`docker/frankenphp/dev-entrypoint.sh`), and CI generates a throwaway pair before PHPUnit.
 
+`config/oauth/` holds **two** pairs, though: the `dev` one above, and `*_test.pem` for the test
+environment (`make oauth-keys-test`, which `make phpunit` depends on). One pair cannot serve both —
+`.env.local` is not loaded under `APP_ENV=test`, so the real passphrase cannot reach a test run,
+and league's `CryptKey` decrypts in its constructor, which fails every test that touches the
+authorization server with an opaque `Unable to read key from file`. The full reasoning is in
+[the testing rules](../../.claude/rules/technical/testing.md).
+
 Two secrets go in **`.env.local`** (git-ignored, edited by hand — `.env` carries empty defaults):
 
 ```dotenv
