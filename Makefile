@@ -109,6 +109,15 @@ jwt-keys: ## Generate the Lexik JWT keypair if missing (the entrypoint does this
 oauth-keys: ## Generate the OAuth 2.1 authorization server keypair if missing (config/oauth/)
 	$(CONSOLE) league:oauth2-server:generate-keypair --skip-if-exists --no-interaction
 
+# A SECOND, separate pair for the test environment, because one pair cannot serve both.
+# .env.local is not loaded when APP_ENV=test, so the dev passphrase cannot reach a test run, and
+# League's CryptKey decrypts the key in its constructor — so a mismatch fails every test that
+# instantiates the AuthorizationServer, with an opaque "Unable to read key from file". The paths
+# and the pinned passphrase live in .env.test; TEST_CONSOLE is what makes the command resolve them.
+.PHONY: oauth-keys-test
+oauth-keys-test: ## Generate the test-only OAuth keypair if missing (config/oauth/*_test.pem)
+	$(TEST_CONSOLE) league:oauth2-server:generate-keypair --skip-if-exists --no-interaction
+
 .PHONY: admin
 admin: ## Print a password hash to insert into the admin table (see README)
 	$(CONSOLE) security:hash-password
@@ -137,8 +146,11 @@ phpstan: ## Run static analysis (level 5)
 lint: php-cs-fixer phpstan ## Run every linter
 
 ## —— Tests —————————————————————————————————————————————————————————
+# oauth-keys-test is a prerequisite rather than a documented first step: the failure it prevents
+# says "Unable to read key from file" and points at vendor/, which sends you looking in the wrong
+# place entirely. It is a no-op once the pair exists (--skip-if-exists).
 .PHONY: phpunit
-phpunit: ## Run the test suite (use TEST=path for a subset) — run `make db-test` first
+phpunit: oauth-keys-test ## Run the test suite (use TEST=path for a subset) — run `make db-test` first
 	$(PHPUNIT) $(if $(TEST),$(TEST),)
 
 .PHONY: ci
