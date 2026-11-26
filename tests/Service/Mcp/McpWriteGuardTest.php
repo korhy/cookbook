@@ -6,24 +6,38 @@ namespace App\Tests\Service\Mcp;
 
 use App\Exception\Mcp\McpWriteDeniedException;
 use App\Service\Mcp\McpWriteGuard;
+use League\Bundle\OAuth2ServerBundle\Security\Authentication\Token\OAuth2Token;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\SecurityBundle\Security;
+use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\RateLimiter\Storage\InMemoryStorage;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
+use Symfony\Component\Security\Core\User\InMemoryUser;
 
 /**
- * The guard is the only thing standing between the public MCP endpoint and a write, so these are
- * security tests rather than behaviour tests: each one names the attack it forecloses.
+ * The guard no longer decides *whether* a caller may write — the `mcp_authoring` firewall does
+ * that, and the shared secret this class used to compare is gone. What it still owns is metering
+ * and the audit trail, and both are security properties in their own right: a valid OAuth grant
+ * must not be a licence to create an unbounded number of drafts, and an authorized write that
+ * leaves no record is not auditable.
  *
- * Built by hand rather than pulled from the container so the configured token and both limits are
- * controllable per case, and so the limiter storage is in-memory and deterministic.
+ * Built by hand rather than pulled from the container so the limits are controllable per case and
+ * the limiter storage is in-memory and deterministic.
  */
 final class McpWriteGuardTest extends TestCase
 {
-    private const VALID_TOKEN = 'c2f4a1b8e07d46339a5c1e8b7f20d64a91c3e5b7d8a06f24913b7c5e0a2d4f68';
+    private const CLIENT_ID = 'cookbook-mcp-authoring';
+
+    private const USER = 'admin';
+
+    private const ACCESS_TOKEN_ID = 'f3c1a9d47b2e40558c6a1d93e07b2f84';
 
     private TestHandler $logHandler;
 
@@ -32,124 +46,88 @@ final class McpWriteGuardTest extends TestCase
         $this->logHandler = new TestHandler();
     }
 
-    public function testValidTokenIsAuthorized(): void
+    public function testAnAuthenticatedWriteIsRecorded(): void
     {
-        $guard = $this->guard();
-
-        $guard->assertMayWrite(self::VALID_TOKEN, 'recipe_create');
+        $this->guard()->assertMayWrite('recipe_create');
 
         $this->assertTrue($this->logHandler->hasInfoThatContains('MCP write authorized.'));
     }
 
-    public function testWrongTokenIsDenied(): void
+    /**
+     * The audit trail is the point of the `mcp_audit` channel: authorization proves a caller
+     * *may* write, only the record says what they did. "Someone wrote this" is not an audit
+     * entry — the client and the user it acted for are.
+     */
+    public function testTheAuditEntryNamesTheClientAndTheUser(): void
     {
-        $guard = $this->guard();
+        $this->guard()->assertMayWrite('recipe_create');
 
-        $this->expectException(McpWriteDeniedException::class);
-        $this->expectExceptionMessage('Write access denied.');
+        $context = $this->logHandler->getRecords()[0]['context'];
 
-        $guard->assertMayWrite('wrong-token', 'recipe_create');
-    }
-
-    public function testWritesAreDeniedWhenNoTokenIsConfigured(): void
-    {
-        $guard = $this->guard(configuredToken: '');
-
-        $this->expectException(McpWriteDeniedException::class);
-        $guard->assertMayWrite('', 'recipe_create');
-    }
-
-    public function testAShortConfiguredTokenIsTreatedAsMisconfigurationAndDenied(): void
-    {
-        $guard = $this->guard(configuredToken: 'too-short');
-
-        try {
-            $guard->assertMayWrite('too-short', 'recipe_create');
-            $this->fail('Expected the guard to refuse a sub-minimum token.');
-        } catch (McpWriteDeniedException) {
-            $this->assertTrue($this->logHandler->hasErrorThatContains('shorter than'));
-        }
+        $this->assertSame('recipe_create', $context['tool']);
+        $this->assertSame(self::CLIENT_ID, $context['oauth_client']);
+        $this->assertSame(self::USER, $context['user']);
+        $this->assertSame('203.0.113.7', $context['client']);
     }
 
     /**
-     * The refusal message must not tell an unauthenticated caller whether a write surface exists:
-     * "disabled" and "wrong token" have to be indistinguishable from outside.
+     * The discipline the shared secret established, kept now that the credential is a JWT: the
+     * trail must be correlatable without becoming a place a credential leaks to.
      */
-    public function testDisabledAndWrongTokenAreIndistinguishableToTheCaller(): void
+    public function testTheAccessTokenIdIsFingerprintedRatherThanLogged(): void
     {
-        $disabled = $this->denialMessage($this->guard(configuredToken: ''), 'anything');
-        $wrong = $this->denialMessage($this->guard(), 'wrong-token');
-
-        $this->assertSame($disabled, $wrong);
-    }
-
-    /**
-     * Regression test for a real defect: SlidingWindowLimiter::reserve() returns accepted=true
-     * unconditionally for a zero-token request, so peeking with isAccepted() made this lockout
-     * dead code and left token guessing unthrottled.
-     */
-    public function testBruteForceLockoutStopsGuessingAfterTheAuthLimit(): void
-    {
-        $guard = $this->guard(authLimit: 3);
-
-        for ($i = 0; $i < 3; ++$i) {
-            $this->denialMessage($guard, 'guess-'.$i);
-        }
-
-        // Even the correct token is refused now: the IP is locked out.
-        $this->expectException(McpWriteDeniedException::class);
-        $guard->assertMayWrite(self::VALID_TOKEN, 'recipe_create');
-    }
-
-    /**
-     * The auth limiter is charged only on failure. If it were charged on every attempt, a
-     * legitimate client would lock itself out with ordinary use.
-     */
-    public function testSuccessfulWritesDoNotConsumeTheBruteForceBudget(): void
-    {
-        $guard = $this->guard(authLimit: 3, writeLimit: 100);
-
-        for ($i = 0; $i < 10; ++$i) {
-            $guard->assertMayWrite(self::VALID_TOKEN, 'recipe_create');
-        }
-
-        $this->assertCount(10, $this->logHandler->getRecords());
-    }
-
-    public function testWriteRateLimitStopsAnAuthenticatedFlood(): void
-    {
-        $guard = $this->guard(writeLimit: 3);
-
-        for ($i = 0; $i < 3; ++$i) {
-            $guard->assertMayWrite(self::VALID_TOKEN, 'recipe_create');
-        }
-
-        $this->expectException(McpWriteDeniedException::class);
-        $this->expectExceptionMessage('Write rate limit reached.');
-        $guard->assertMayWrite(self::VALID_TOKEN, 'recipe_create');
-    }
-
-    /**
-     * The audit trail must be usable without becoming a place the secret leaks to.
-     */
-    public function testTheTokenNeverReachesTheLog(): void
-    {
-        $guard = $this->guard();
-
-        $guard->assertMayWrite(self::VALID_TOKEN, 'recipe_create');
-        $this->denialMessage($guard, 'some-wrong-token-value');
+        $this->guard()->assertMayWrite('recipe_create');
 
         $serialisedLog = json_encode($this->logHandler->getRecords());
 
         $this->assertNotFalse($serialisedLog);
-        $this->assertStringNotContainsString(self::VALID_TOKEN, $serialisedLog);
-        $this->assertStringNotContainsString('some-wrong-token-value', $serialisedLog);
-        // The fingerprint is what makes the entry correlatable instead.
-        $this->assertStringContainsString(substr(hash('sha256', self::VALID_TOKEN), 0, 8), $serialisedLog);
+        $this->assertStringNotContainsString(self::ACCESS_TOKEN_ID, $serialisedLog);
+        $this->assertStringContainsString(substr(hash('sha256', self::ACCESS_TOKEN_ID), 0, 8), $serialisedLog);
+    }
+
+    public function testWriteRateLimitStopsAnAuthorizedFlood(): void
+    {
+        $guard = $this->guard(writeLimit: 3);
+
+        for ($i = 0; $i < 3; ++$i) {
+            $guard->assertMayWrite('recipe_create');
+        }
+
+        // Named, not uniform: the caller is authenticated here, so the reason leaks nothing — and
+        // a client that cannot tell "throttled" from "refused" retries forever.
+        $this->expectException(McpWriteDeniedException::class);
+        $this->expectExceptionMessage('Write rate limit reached.');
+        $guard->assertMayWrite('recipe_create');
     }
 
     /**
-     * assertMayFetch() shares the token check but not the budget: importing a page must not spend
+     * The window is keyed on the client and the user, NOT on the access token — which lives one
+     * hour. Keying it on the token would hand a caller a fresh budget with every refresh, which
+     * is not a limit at all.
+     */
+    public function testTheRateLimitSurvivesARefreshedAccessToken(): void
+    {
+        $storage = new InMemoryStorage();
+        $writeLimiter = $this->limiterFactory('mcp_write', 2, $storage);
+
+        $first = $this->guard(writeLimit: 2, writeLimiter: $writeLimiter);
+        $first->assertMayWrite('recipe_create');
+        $first->assertMayWrite('recipe_create');
+
+        // Same client, same user, brand new access token id — as after a refresh.
+        $afterRefresh = $this->guard(
+            writeLimit: 2,
+            writeLimiter: $writeLimiter,
+            accessTokenId: 'a-completely-different-token-id',
+        );
+
+        $this->expectException(McpWriteDeniedException::class);
+        $this->expectExceptionMessage('Write rate limit reached.');
+        $afterRefresh->assertMayWrite('recipe_create');
+    }
+
+    /**
+     * assertMayFetch() shares the metering but not the budget: importing a page must not spend
      * the allowance for creating the recipe it produced.
      */
     public function testFetchAndWriteHaveSeparateBudgets(): void
@@ -157,67 +135,99 @@ final class McpWriteGuardTest extends TestCase
         $guard = $this->guard(writeLimit: 2);
 
         for ($i = 0; $i < 2; ++$i) {
-            $guard->assertMayFetch(self::VALID_TOKEN, 'recipe_import_from_url');
+            $guard->assertMayFetch('recipe_import_from_url');
         }
 
         // The write budget is untouched by those fetches.
-        $guard->assertMayWrite(self::VALID_TOKEN, 'recipe_create');
+        $guard->assertMayWrite('recipe_create');
 
         $this->expectException(McpWriteDeniedException::class);
         $this->expectExceptionMessage('Import rate limit reached.');
-        $guard->assertMayFetch(self::VALID_TOKEN, 'recipe_import_from_url');
+        $guard->assertMayFetch('recipe_import_from_url');
     }
 
-    public function testFetchIsDeniedWithoutAValidToken(): void
+    /**
+     * Defence in depth, and it must stay: the firewall is what makes this unreachable, so this
+     * case is what a `security.yaml` edit that quietly stopped protecting the endpoint would
+     * look like from inside a tool. It must not be a write.
+     */
+    public function testAWriteWithNoOAuthTokenIsRefusedAndLoggedAsAnError(): void
     {
-        $guard = $this->guard();
+        $guard = $this->guard(token: false);
+
+        try {
+            $guard->assertMayWrite('recipe_create');
+            $this->fail('Expected the guard to refuse a write with no OAuth token on the request.');
+        } catch (McpWriteDeniedException $e) {
+            $this->assertSame('Write access denied.', $e->getMessage());
+            $this->assertTrue($this->logHandler->hasErrorThatContains('no OAuth access token'));
+        }
+    }
+
+    /**
+     * The admin session and the Lexik JWT firewall both produce real identities, but neither is
+     * an OAuth grant and neither carries a scope a resource owner approved. Only an OAuth2Token
+     * opens this path.
+     */
+    public function testANonOAuthTokenIsRefused(): void
+    {
+        $sessionToken = new UsernamePasswordToken(
+            new InMemoryUser(self::USER, null, ['ROLE_ADMIN']),
+            'admin',
+            ['ROLE_ADMIN'],
+        );
 
         $this->expectException(McpWriteDeniedException::class);
-        $this->expectExceptionMessage('Write access denied.');
-        $guard->assertMayFetch('wrong-token', 'recipe_import_from_url');
+        $this->guard(token: $sessionToken)->assertMayWrite('recipe_create');
     }
 
-    public function testIsEnabledReflectsTheConfiguredToken(): void
-    {
-        $this->assertTrue($this->guard()->isEnabled());
-        $this->assertFalse($this->guard(configuredToken: '')->isEnabled());
-        $this->assertFalse($this->guard(configuredToken: 'too-short')->isEnabled());
-    }
-
+    /**
+     * @param TokenInterface|false|null $token the authenticated token: an OAuth2Token by default,
+     *                                         false for "nothing authenticated at all"
+     */
     private function guard(
-        string $configuredToken = self::VALID_TOKEN,
         int $writeLimit = 20,
-        int $authLimit = 10,
+        TokenInterface|false|null $token = null,
+        ?RateLimiterFactory $writeLimiter = null,
+        string $accessTokenId = self::ACCESS_TOKEN_ID,
     ): McpWriteGuard {
         $requestStack = new RequestStack();
-        $requestStack->push(Request::create('/api/v1/mcp', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7']));
+        $requestStack->push(Request::create('/api/v1/mcp-authoring', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7']));
+
+        $tokenStorage = new TokenStorage();
+
+        if (false !== $token) {
+            $tokenStorage->setToken($token ?? $this->oauthToken($accessTokenId));
+        }
+
+        $container = new Container();
+        $container->set('security.token_storage', $tokenStorage);
 
         return new McpWriteGuard(
-            $configuredToken,
-            $this->limiterFactory('mcp_write', $writeLimit),
+            new Security($container),
+            $writeLimiter ?? $this->limiterFactory('mcp_write', $writeLimit),
             $this->limiterFactory('mcp_import', $writeLimit),
-            $this->limiterFactory('mcp_write_auth', $authLimit),
             new Logger('test', [$this->logHandler]),
             $requestStack,
         );
     }
 
-    private function limiterFactory(string $id, int $limit): RateLimiterFactory
+    private function oauthToken(string $accessTokenId): OAuth2Token
     {
-        return new RateLimiterFactory(
-            ['id' => $id, 'policy' => 'sliding_window', 'limit' => $limit, 'interval' => '1 hour'],
-            new InMemoryStorage(),
+        return new OAuth2Token(
+            new InMemoryUser(self::USER, null, ['ROLE_ADMIN']),
+            $accessTokenId,
+            self::CLIENT_ID,
+            ['mcp:write'],
+            'ROLE_OAUTH2_',
         );
     }
 
-    private function denialMessage(McpWriteGuard $guard, string $token): string
+    private function limiterFactory(string $id, int $limit, ?InMemoryStorage $storage = null): RateLimiterFactory
     {
-        try {
-            $guard->assertMayWrite($token, 'recipe_create');
-        } catch (McpWriteDeniedException $e) {
-            return $e->getMessage();
-        }
-
-        $this->fail('Expected the guard to deny the write.');
+        return new RateLimiterFactory(
+            ['id' => $id, 'policy' => 'sliding_window', 'limit' => $limit, 'interval' => '1 hour'],
+            $storage ?? new InMemoryStorage(),
+        );
     }
 }

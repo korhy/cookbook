@@ -12,6 +12,7 @@ security:
                 property: username
         # used to reload user from session & other features (e.g. switch_user)
 
+    # Note: firewalls are matched in DECLARATION order, and only the first matching one runs.
     firewalls:
         dev:
             # Ensure dev tools and static assets are always allowed
@@ -22,11 +23,27 @@ security:
         # entry point: nothing can turn these into a 302 to the login form. A client whose access
         # token expired has to be able to re-discover the server and exchange its refresh token
         # unauthenticated — if /oauth2/token answered with a redirect, it could never recover.
-        # /.well-known/* is listed here ahead of the metadata documents (RFC 9728 / RFC 8414)
-        # that land in the next phase; nothing serves those paths yet.
         oauth2_public:
             pattern: ^/(oauth2/token|\.well-known/)
             security: false
+        # The MCP authoring endpoint — recipe_create and recipe_import_from_url, and nothing else.
+        # DECLARED ABOVE `api` on purpose: `^/api` matches this path too, and the first matching
+        # firewall is the one that runs, so swapping these two blocks would hand the endpoint to
+        # the Lexik JWT authenticator and make an OAuth access token unusable.
+        #
+        # `entry_point` and `access_denied_handler` are most of the reason this endpoint exists
+        # apart from the public one. League's authenticator is an entry point too, but its
+        # challenge is the bare string `Bearer` — no `resource_metadata` — so a client learns
+        # nothing from its 401 and cannot discover where to get a token. McpBearerChallenge
+        # answers both halves: 401 carrying the RFC 9728 pointer, and 403 `insufficient_scope`
+        # when a token authenticates but does not carry the scope the operation needs.
+        mcp_authoring:
+            pattern: ^/api/v1/mcp-authoring
+            stateless: true
+            provider: app_user_provider
+            oauth2: true
+            entry_point: App\Security\McpBearerChallenge
+            access_denied_handler: App\Security\McpBearerChallenge
         api:
             pattern: ^/api
             stateless: true
@@ -67,6 +84,17 @@ security:
     access_control:
         - { path: ^/api/login_check, roles: PUBLIC_ACCESS }
         - { path: ^/api/v1/docs,      roles: PUBLIC_ACCESS }
+        # ABOVE the ^/api/v1/mcp line, and that order is load-bearing: these paths are REGEXES,
+        # so `^/api/v1/mcp` matches `/api/v1/mcp-authoring` as well. Below it, the write endpoint
+        # would inherit PUBLIC_ACCESS and the firewall above would authenticate a bearer token
+        # that nothing then required — the exact accident this project's rules warn about.
+        #
+        # MCP_WRITE is an attribute, not a role, and App\Security\McpScopeVoter answers it: see
+        # that class for why the role league derives from the scope has no business being written
+        # out here. An unauthenticated request fails this rule, reaches the firewall's
+        # entry_point and gets the 401 challenge; an authenticated one without the scope reaches
+        # the access_denied_handler and gets 403 insufficient_scope.
+        - { path: ^/api/v1/mcp-authoring, roles: MCP_WRITE }
         - { path: ^/api/v1/mcp,       roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: ROLE_ADMIN }
         # The resource owner is the single Admin account, so the authorization endpoint just

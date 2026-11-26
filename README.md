@@ -106,19 +106,27 @@ inside a container is almost always a host missing from that list, not a broken 
 
 ### The write path
 
-`recipe_create` and `recipe_import_from_url` are the only tools that are not read-only, and they are
-**disabled by default**. Enable them in `.env.local`:
+`recipe_create` and `recipe_import_from_url` are the only tools that are not read-only, and they do
+not live on the public endpoint at all. They sit on a **second MCP server**, at
+**`/api/v1/mcp-authoring`**, behind this project's own OAuth 2.1 authorization server: reaching it
+takes an access token carrying the `mcp:write` scope, obtained through a browser flow the single
+Admin account approves. The full procedure — registering a client, configuring an MCP client, and
+what each endpoint answers — is in
+**[docs/mcp/oauth-authorization-server.md](docs/mcp/oauth-authorization-server.md)**.
+
+The endpoint needs no enabling: with no token presented it answers `401` with a `WWW-Authenticate`
+challenge pointing at the discovery document, so deploying this project never turns anything into a
+write surface on its own. One variable still gates the importer, and it is empty on purpose:
 
 ```dotenv
-# openssl rand -hex 32 — must be at least 32 characters
-MCP_WRITE_TOKEN=
-
 # comma-separated, exact match: "marmiton.org" does not cover "www.marmiton.org"
 MCP_IMPORT_ALLOWED_HOSTS=
 ```
 
-With `MCP_WRITE_TOKEN` empty every write call is refused, so deploying this project never turns the
-public endpoint into a write surface on its own.
+There is deliberately **no shared write secret**. There used to be one, `MCP_WRITE_TOKEN`, taken by
+both tools as a tool *argument* — which meant the MCP client advertised it as a required field and a
+human ended up pasting it in clear into a conversation to make the tools work. The credential now
+belongs to the transport, where a client can hold it without a person ever reading it.
 
 **Nothing an MCP client submits goes live.** `recipe_create` stores a **draft**, which is invisible
 to `/api/v1` and to the read tools until an administrator publishes it from the "Drafts" queue in

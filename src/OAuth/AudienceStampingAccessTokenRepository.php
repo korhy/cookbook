@@ -19,7 +19,8 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
  *
  * `league/oauth2-server` 9.5 does not implement RFC 8707 resource indicators — the `resource`
  * parameter a client sends is read nowhere — so nothing would otherwise write an audience naming
- * our endpoint, and phase 5's validation would have nothing to check. Decorating the repository is
+ * our endpoint, and {@see \App\Security\McpTokenAudienceVerifier} would have nothing to check.
+ * Decorating the repository is
  * the one hook that can: it is where the entity is built, and the entity decides its own claims.
  * The alternatives (the extra-claims event, league's `ACCESS_TOKEN_ISSUED`) were read and rejected
  * in docs/decisions/mcp-oauth-audience-claim.md.

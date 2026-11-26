@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Mcp\Tool;
+namespace App\Mcp\Tool\Write;
 
 use App\DTO\Mcp\IngredientLineInput;
 use App\DTO\Mcp\RecipeDraftInput;
@@ -16,15 +16,23 @@ use Mcp\Capability\Attribute\McpTool;
 use Mcp\Capability\Attribute\Schema;
 
 /**
- * The one write tool on an otherwise read-only, public MCP server.
+ * The one tool that writes, on the OAuth-protected authoring MCP server.
  *
  * It does not parse prose: the calling model is what turns "a chocolate cake with 200g flour" into
  * the structured arguments below. Keeping the natural-language step on the client is deliberate —
  * it means no untrusted text is ever fed to a model inside this application.
  *
+ * **No credential appears in this signature, and that is the point of the whole OAuth build-out.**
+ * The bundle derives the advertised JSON Schema from these parameters, so the `string $token`
+ * argument this tool used to take announced the shared secret to the client as a required field —
+ * and a human ended up pasting it in clear into a conversation to make the tool work. The
+ * credential belongs to the transport, not to the call: the `mcp_authoring` firewall authenticates
+ * the bearer token before this class is reached. Never add a credential parameter back.
+ *
  * Everything it creates is a DRAFT: invisible to /api/v1 and to the read tools until an
- * administrator publishes it in EasyAdmin. Authorization, throttling and the audit trail belong to
- * {@see McpWriteGuard}; building and persisting the entity graph belongs to
+ * administrator publishes it in EasyAdmin. That quarantine is independent of authentication and
+ * outlives it — an authorized caller is not a reviewed one. Rate limiting and the audit trail
+ * belong to {@see McpWriteGuard}; building and persisting the entity graph belongs to
  * {@see RecipeDraftFactory}. This class only maps arguments and shapes the response.
  */
 #[McpTool(
@@ -32,9 +40,10 @@ use Mcp\Capability\Attribute\Schema;
     description: <<<'TEXT'
         Create a new recipe, and any ingredient it needs that does not exist yet.
 
-        Requires a write token: this is the only non-read-only tool on this server, and calls
-        without a valid token are refused. The recipe is created as a DRAFT and is not visible
-        through the public API until an administrator publishes it.
+        This tool lives on the authoring endpoint and requires an OAuth 2.1 access token carrying
+        the mcp:write scope; the endpoint answers 401 with a WWW-Authenticate challenge when none
+        is presented. The recipe is created as a DRAFT and is not visible through the public API
+        until an administrator publishes it.
 
         Limits: at most 50 ingredients and 50 instructions, and at most 5 previously-unknown
         ingredients may be created in a single call — use ingredient_search first to reuse existing
@@ -51,9 +60,10 @@ final class RecipeCreateTool
     }
 
     /**
-     * The two array parameters are decoded JSON from an unauthenticated caller. They are typed as
-     * mixed on purpose: the shape below is what the advertised JSON Schema *asks* for, not
-     * something the runtime can assume, so the mapping methods re-check every element.
+     * The two array parameters are decoded JSON from the caller. Authenticated is not the same as
+     * trusted — the recipe content is still external input — so they are typed as mixed on
+     * purpose: the shape below is what the advertised JSON Schema *asks* for, not something the
+     * runtime can assume, so the mapping methods re-check every element.
      *
      * @param array<int, mixed> $ingredients  each element: {name: string, quantity?: number, unit?: string}
      * @param array<int, mixed> $instructions each element: string
@@ -61,7 +71,6 @@ final class RecipeCreateTool
      * @return array<string, mixed>
      */
     public function __invoke(
-        string $token,
         string $title,
         string $description,
         // Individual Schema properties, NOT `definition:` — Schema::toArray() returns a
@@ -96,7 +105,7 @@ final class RecipeCreateTool
         ?int $duration = null,
     ): array {
         try {
-            $this->guard->assertMayWrite($token, 'recipe_create');
+            $this->guard->assertMayWrite('recipe_create');
         } catch (McpWriteDeniedException $e) {
             return ['error' => $e->getMessage()];
         }

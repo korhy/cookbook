@@ -5,147 +5,100 @@ declare(strict_types=1);
 namespace App\Service\Mcp;
 
 use App\Exception\Mcp\McpWriteDeniedException;
+use League\Bundle\OAuth2ServerBundle\Security\Authentication\Token\OAuth2Token;
 use Monolog\Attribute\WithMonologChannel;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 
 /**
- * The single authorization gate in front of every MCP write tool.
+ * Meters and records every MCP write, in front of the tool that performs it.
  *
- * The MCP endpoint is public and unauthenticated (`PUBLIC_ACCESS` in security.yaml), so a write
- * tool cannot lean on the firewall. This class is the substitute, and it exists as one service so
- * that no tool can implement four of the five checks and forget the fifth.
+ * **What changed when OAuth arrived.** This class used to be the *only* gate: the MCP endpoint was
+ * public, so it compared a shared secret the tools took as an argument. Authentication and
+ * authorization now happen at the HTTP layer — the `mcp_authoring` firewall authenticates the
+ * bearer token, {@see \App\Security\McpTokenAudienceVerifier} checks it was issued for this
+ * resource, and {@see \App\Security\McpScopeVoter} checks the `mcp:write` scope — so a call that
+ * reaches a tool has already proved who it is. That is strictly stronger than the secret, and it
+ * is why the secret is gone.
  *
- * It signals refusal by throwing rather than returning a status, so that ignoring the result is not
- * something a caller can do by accident.
+ * Two of the three jobs this class did are **not** replaced by the firewall, which is why it
+ * stayed:
+ *
+ * 1. **Rate limiting**, now keyed on the authenticated identity rather than on a token
+ *    fingerprint. A valid grant is not a licence to create 10,000 drafts, and OAuth has nothing
+ *    to say about volume.
+ * 2. **The audit trail** on the `mcp_audit` channel: which client, acting for which user, wrote
+ *    what and when. Authorization proves a caller may write; only the trail says what they did.
+ *
+ * It signals refusal by throwing rather than returning a status, so that ignoring the result is
+ * not something a caller can do by accident.
  */
 #[WithMonologChannel('mcp_audit')]
 final class McpWriteGuard
 {
-    /**
-     * A token shorter than this is treated as a misconfiguration rather than a secret. Refusing
-     * outright beats quietly running with a guessable shared secret.
-     */
-    private const MINIMUM_TOKEN_LENGTH = 32;
-
-    /**
-     * Uniform refusal message. It must stay the same for "disabled", "wrong token" and
-     * "auth throttled" — see McpWriteDeniedException.
-     */
-    private const PUBLIC_DENIAL = 'Write access denied.';
-
     public function __construct(
-        #[Autowire(env: 'MCP_WRITE_TOKEN')]
-        private readonly string $writeToken,
+        private readonly Security $security,
         private readonly RateLimiterFactoryInterface $mcpWriteLimiter,
         private readonly RateLimiterFactoryInterface $mcpImportLimiter,
-        private readonly RateLimiterFactoryInterface $mcpWriteAuthLimiter,
         private readonly LoggerInterface $logger,
         private readonly RequestStack $requestStack,
     ) {
     }
 
     /**
-     * True when a usable token is configured. Lets a tool stay out of the advertised tool list
-     * rather than advertising a capability that will always refuse.
-     */
-    public function isEnabled(): bool
-    {
-        return \strlen($this->writeToken) >= self::MINIMUM_TOKEN_LENGTH;
-    }
-
-    /**
      * @throws McpWriteDeniedException when the write must not proceed
      */
-    public function assertMayWrite(#[\SensitiveParameter] string $token, string $tool): void
+    public function assertMayWrite(string $tool): void
     {
-        $this->assertAuthorized($token, $tool, $this->mcpWriteLimiter, 'Write rate limit reached. Try again later.');
+        $this->meter($tool, $this->mcpWriteLimiter, 'Write rate limit reached. Try again later.');
     }
 
     /**
-     * Same gate, a separate budget.
+     * Same metering, a separate budget.
      *
      * Fetching a URL is not a write, but it does make this server issue an outbound request on a
-     * caller's behalf — so it is gated too rather than left anonymous. It gets its own limiter so
-     * that importing a page does not consume the budget for creating the recipe it produced.
+     * caller's behalf — so it is metered too rather than left unbounded. It gets its own limiter
+     * so that importing a page does not consume the budget for creating the recipe it produced.
      *
      * @throws McpWriteDeniedException when the fetch must not proceed
      */
-    public function assertMayFetch(#[\SensitiveParameter] string $token, string $tool): void
+    public function assertMayFetch(string $tool): void
     {
-        $this->assertAuthorized($token, $tool, $this->mcpImportLimiter, 'Import rate limit reached. Try again later.');
+        $this->meter($tool, $this->mcpImportLimiter, 'Import rate limit reached. Try again later.');
     }
 
     /**
      * @throws McpWriteDeniedException
      */
-    private function assertAuthorized(
-        #[\SensitiveParameter] string $token,
-        string $tool,
-        RateLimiterFactoryInterface $operationLimiter,
-        string $rateLimitMessage,
-    ): void {
+    private function meter(string $tool, RateLimiterFactoryInterface $operationLimiter, string $rateLimitMessage): void
+    {
+        $token = $this->security->getToken();
         $client = $this->clientKey();
 
-        if ('' === $this->writeToken) {
-            // Not an attack: the expected state of a fresh deploy. Info, not warning.
-            $this->logger->info('MCP write refused: no MCP_WRITE_TOKEN configured.', [
+        if (!$token instanceof OAuth2Token) {
+            // Belt and braces, and it must stay: the firewall is what makes this unreachable, and
+            // a tool must not start writing because a `security.yaml` edit quietly stopped
+            // protecting its endpoint. The authoring MCP server declares `stdio: false` for the
+            // same reason — a piped caller has no identity to record here.
+            $this->logger->error('MCP write refused: no OAuth access token on the request.', [
                 'tool' => $tool,
                 'client' => $client,
             ]);
 
-            throw new McpWriteDeniedException(self::PUBLIC_DENIAL);
+            throw new McpWriteDeniedException('Write access denied.');
         }
 
-        if (!$this->isEnabled()) {
-            $this->logger->error('MCP write refused: MCP_WRITE_TOKEN is shorter than the {minimum}-character minimum.', [
-                'tool' => $tool,
-                'client' => $client,
-                'minimum' => self::MINIMUM_TOKEN_LENGTH,
-            ]);
+        $identity = $this->identityOf($token);
 
-            throw new McpWriteDeniedException(self::PUBLIC_DENIAL);
-        }
-
-        // Peek without consuming: this limiter is charged only on failure, so a legitimate client's
-        // writes can never exhaust its own brute-force budget.
-        //
-        // The peek reads getRemainingTokens(), NOT isAccepted(): SlidingWindowLimiter::reserve()
-        // short-circuits on a zero-token request and returns accepted=true however exhausted the
-        // window is, so isAccepted() here would silently never deny.
-        $authLimiter = $this->mcpWriteAuthLimiter->create($client);
-
-        if ($authLimiter->consume(0)->getRemainingTokens() < 1) {
-            $this->logger->warning('MCP write refused: too many failed authentication attempts.', [
-                'tool' => $tool,
-                'client' => $client,
-            ]);
-
-            throw new McpWriteDeniedException(self::PUBLIC_DENIAL);
-        }
-
-        if (!hash_equals($this->writeToken, $token)) {
-            $authLimiter->consume(1);
-
-            $this->logger->warning('MCP write refused: invalid token.', [
-                'tool' => $tool,
-                'client' => $client,
-                'token_fingerprint' => $this->fingerprint($token),
-            ]);
-
-            throw new McpWriteDeniedException(self::PUBLIC_DENIAL);
-        }
-
-        $fingerprint = $this->fingerprint($token);
-
-        if (!$operationLimiter->create($fingerprint)->consume(1)->isAccepted()) {
-            // The caller proved the token here, so naming the reason leaks nothing.
+        if (!$operationLimiter->create($identity['key'])->consume(1)->isAccepted()) {
+            // The caller is authenticated here, so naming the reason leaks nothing — and a client
+            // that cannot tell "throttled" from "refused" will retry forever.
             $this->logger->warning('MCP write refused: operation rate limit reached.', [
                 'tool' => $tool,
                 'client' => $client,
-                'token_fingerprint' => $fingerprint,
+                ...$identity['context'],
             ]);
 
             throw new McpWriteDeniedException($rateLimitMessage);
@@ -154,24 +107,42 @@ final class McpWriteGuard
         $this->logger->info('MCP write authorized.', [
             'tool' => $tool,
             'client' => $client,
-            'token_fingerprint' => $fingerprint,
+            ...$identity['context'],
         ]);
     }
 
     /**
-     * A short SHA-256 prefix. Enough to correlate a burst of attempts in the log, useless for
-     * recovering the token — which must never be logged.
+     * The rate-limit key and the audit context for an authenticated caller.
+     *
+     * **The key is the OAuth client plus the user, not the access token.** An access token lives
+     * one hour (`access_token_ttl: PT1H`), so keying a sliding window on it would hand a caller a
+     * fresh budget with every refresh — a limit that resets on demand is not a limit. The client
+     * and the user both outlive the token.
+     *
+     * The access token id is recorded as an 8-character SHA-256 prefix, keeping the discipline
+     * the shared secret established: enough to tie a burst of calls to one token, useless for
+     * recovering it. The client and user identifiers are not credentials and are logged whole —
+     * an audit trail that cannot say who acted is not one.
+     *
+     * @return array{key: string, context: array{oauth_client: string, user: string, access_token_fingerprint: string}}
      */
-    private function fingerprint(#[\SensitiveParameter] string $token): string
+    private function identityOf(OAuth2Token $token): array
     {
-        return substr(hash('sha256', $token), 0, 8);
+        $client = $token->getOAuthClientId();
+        $user = $token->getUserIdentifier();
+
+        return [
+            'key' => \sprintf('%s:%s', $client, $user),
+            'context' => [
+                'oauth_client' => $client,
+                'user' => $user,
+                'access_token_fingerprint' => substr(hash('sha256', $token->getCredentials()), 0, 8),
+            ],
+        ];
     }
 
-    /**
-     * The MCP server also speaks stdio, where there is no request and therefore no IP.
-     */
     private function clientKey(): string
     {
-        return $this->requestStack->getCurrentRequest()?->getClientIp() ?? 'cli';
+        return $this->requestStack->getCurrentRequest()?->getClientIp() ?? 'unknown';
     }
 }

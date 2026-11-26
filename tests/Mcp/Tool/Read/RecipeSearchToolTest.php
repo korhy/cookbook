@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Mcp\Tool;
+namespace App\Tests\Mcp\Tool\Read;
 
 use App\Entity\Category;
 use App\Entity\Recipe;
 use App\Enum\RecipeStatus;
-use App\Mcp\Tool\RecipeSearchTool;
+use App\Mcp\Tool\Read\RecipeSearchTool;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 

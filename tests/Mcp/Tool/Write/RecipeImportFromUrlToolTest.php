@@ -2,21 +2,26 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Mcp\Tool;
+namespace App\Tests\Mcp\Tool\Write;
 
-use App\Mcp\Tool\RecipeImportFromUrlTool;
+use App\Mcp\Tool\Write\RecipeImportFromUrlTool;
 use App\Service\Http\SsrfGuardedFetcher;
 use App\Service\Mcp\McpWriteGuard;
 use App\Service\Recipe\JsonLdRecipeExtractor;
+use League\Bundle\OAuth2ServerBundle\Security\Authentication\Token\OAuth2Token;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\SecurityBundle\Security;
+use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\RateLimiter\Storage\InMemoryStorage;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\User\InMemoryUser;
 
 /**
  * Built from real collaborators with a mocked transport, so the guard, the SSRF checks and the
@@ -24,12 +29,11 @@ use Symfony\Component\RateLimiter\Storage\InMemoryStorage;
  */
 final class RecipeImportFromUrlToolTest extends TestCase
 {
-    private const TOKEN = 'c2f4a1b8e07d46339a5c1e8b7f20d64a91c3e5b7d8a06f24913b7c5e0a2d4f68';
     private const HOST = '93.184.216.34';
 
     public function testImportsARecipeWithoutStoringAnything(): void
     {
-        $result = ($this->tool($this->pageWithRecipe()))(self::TOKEN, 'https://'.self::HOST.'/cake');
+        $result = ($this->tool($this->pageWithRecipe()))('https://'.self::HOST.'/cake');
 
         $this->assertArrayNotHasKey('error', $result);
         $this->assertSame('Chocolate Cake', $result['title']);
@@ -41,6 +45,11 @@ final class RecipeImportFromUrlToolTest extends TestCase
         $this->assertStringContainsString('Nothing has been stored', $result['message']);
     }
 
+    /**
+     * The ordering this protects is what keeps the import tool from being an open proxy: the
+     * guard has to refuse **before** the fetcher reaches the network, or an unauthorized caller
+     * can still make this server issue an outbound request on their behalf and time the result.
+     */
     public function testAnUnauthenticatedCallCannotMakeTheServerFetchAnything(): void
     {
         $requests = 0;
@@ -50,7 +59,7 @@ final class RecipeImportFromUrlToolTest extends TestCase
             return new MockResponse($this->pageWithRecipe());
         });
 
-        $result = ($this->tool(client: $client))('wrong-token', 'https://'.self::HOST.'/cake');
+        $result = ($this->tool(client: $client, authenticated: false))('https://'.self::HOST.'/cake');
 
         $this->assertSame('Write access denied.', $result['error']);
         $this->assertSame(0, $requests, 'The guard must run before any outbound request.');
@@ -58,14 +67,14 @@ final class RecipeImportFromUrlToolTest extends TestCase
 
     public function testANonAllowlistedHostIsRefused(): void
     {
-        $result = ($this->tool($this->pageWithRecipe()))(self::TOKEN, 'https://evil.example.com/cake');
+        $result = ($this->tool($this->pageWithRecipe()))('https://evil.example.com/cake');
 
         $this->assertStringContainsString('not on the import allowlist', $result['error']);
     }
 
     public function testTheMetadataServiceIsRefused(): void
     {
-        $result = ($this->tool($this->pageWithRecipe()))(self::TOKEN, 'https://169.254.169.254/latest/meta-data/');
+        $result = ($this->tool($this->pageWithRecipe()))('https://169.254.169.254/latest/meta-data/');
 
         $this->assertArrayHasKey('error', $result);
         $this->assertStringNotContainsString('meta-data', $result['error']);
@@ -73,21 +82,35 @@ final class RecipeImportFromUrlToolTest extends TestCase
 
     public function testAPageWithoutARecipeIsReportedCleanly(): void
     {
-        $result = ($this->tool('<html><body>no recipe here</body></html>'))(self::TOKEN, 'https://'.self::HOST.'/x');
+        $result = ($this->tool('<html><body>no recipe here</body></html>'))('https://'.self::HOST.'/x');
 
         $this->assertStringContainsString('does not publish a schema.org Recipe', $result['error']);
     }
 
-    private function tool(?string $body = null, ?MockHttpClient $client = null): RecipeImportFromUrlTool
+    private function tool(?string $body = null, ?MockHttpClient $client = null, bool $authenticated = true): RecipeImportFromUrlTool
     {
         $requestStack = new RequestStack();
-        $requestStack->push(Request::create('/api/v1/mcp', 'POST', server: ['REMOTE_ADDR' => '203.0.113.9']));
+        $requestStack->push(Request::create('/api/v1/mcp-authoring', 'POST', server: ['REMOTE_ADDR' => '203.0.113.9']));
+
+        $tokenStorage = new TokenStorage();
+
+        if ($authenticated) {
+            $tokenStorage->setToken(new OAuth2Token(
+                new InMemoryUser('admin', null, ['ROLE_ADMIN']),
+                'test-access-token-id',
+                'cookbook-mcp-authoring',
+                ['mcp:write'],
+                'ROLE_OAUTH2_',
+            ));
+        }
+
+        $container = new Container();
+        $container->set('security.token_storage', $tokenStorage);
 
         $guard = new McpWriteGuard(
-            self::TOKEN,
+            new Security($container),
             $this->limiter('mcp_write'),
             $this->limiter('mcp_import'),
-            $this->limiter('mcp_write_auth'),
             new Logger('test', [new TestHandler()]),
             $requestStack,
         );

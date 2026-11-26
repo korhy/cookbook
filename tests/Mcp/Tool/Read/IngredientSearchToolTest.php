@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Mcp\Tool;
+namespace App\Tests\Mcp\Tool\Read;
 
 use App\Entity\Ingredient;
-use App\Mcp\Tool\IngredientSearchTool;
+use App\Mcp\Tool\Read\IngredientSearchTool;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 

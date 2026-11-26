@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Mcp\Tool;
+namespace App\Mcp\Tool\Read;
 
 use App\Repository\RecipeRepository;
 use App\Service\Mcp\RecipePresenter;

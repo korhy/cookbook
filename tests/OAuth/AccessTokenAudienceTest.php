@@ -18,19 +18,19 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
 /**
- * Proves the `aud` claim reaches an issued access token.
+ * Proves the `aud` claim reaches an issued access token, in the order the resource server needs.
  *
  * Without it the resource server has nothing to validate: league hard-codes the *client*
  * identifier as the audience and ignores RFC 8707 entirely, so a token minted for some other
- * resource would look exactly like one minted for the MCP endpoint. Phase 5's validation is built
- * on this claim being there.
+ * resource would look exactly like one minted for the MCP endpoint.
+ * App\Security\McpTokenAudienceVerifier is built on this claim being there.
  *
  * Two things are tested, because either alone would pass while the feature is broken: that the
  * decorator stamps the audience, and that the decoration is actually registered in the container.
  */
 final class AccessTokenAudienceTest extends KernelTestCase
 {
-    private const RESOURCE_URI = 'https://api.example.test/api/v1/mcp';
+    private const RESOURCE_URI = 'https://api.example.test/api/v1/mcp-authoring';
 
     private const CLIENT_ID = 'cookbook-mcp-authoring';
 
@@ -54,11 +54,14 @@ final class AccessTokenAudienceTest extends KernelTestCase
     {
         $claims = $this->issueAccessToken()->claims();
 
-        // An array of two, in this order: ours is seeded first and league's own `permittedFor()`
-        // appends the client id (Builder.php:42-48 merges with dedup rather than replacing). A
-        // resource server validates by membership, so the client entry is harmless — but it is
-        // asserted here so that a league release changing that behaviour is noticed.
-        self::assertSame([self::RESOURCE_URI, self::CLIENT_ID], $claims->get('aud'));
+        // An array of two, and THE ORDER IS THE ASSERTION. `BearerTokenValidator` recovers the
+        // client identifier from `aud[0]` positionally (BearerTokenValidator.php:137), so a token
+        // whose resource URI came first would make every authenticated request report the
+        // resource URI as its OAuth client — which is what the audit trail and the write path's
+        // rate-limit key are built on. Both entries are seeded by
+        // App\OAuth\AudienceAwareAccessToken and league's own `permittedFor()` then appends
+        // nothing, Builder.php:42-48 merging with dedup rather than replacing.
+        self::assertSame([self::CLIENT_ID, self::RESOURCE_URI], $claims->get('aud'));
     }
 
     /**
@@ -72,7 +75,7 @@ final class AccessTokenAudienceTest extends KernelTestCase
         $claims = $this->issueAccessToken(['cookbook_marker' => 'reached'])->claims();
 
         self::assertSame('reached', $claims->get('cookbook_marker'));
-        self::assertSame([self::RESOURCE_URI, self::CLIENT_ID], $claims->get('aud'));
+        self::assertSame([self::CLIENT_ID, self::RESOURCE_URI], $claims->get('aud'));
     }
 
     /**

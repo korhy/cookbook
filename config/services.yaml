@@ -18,10 +18,12 @@ parameters:
     # way that reports nothing useful:
     #   1. the RFC 9728 document's `resource` member, which clients read;
     #   2. the `aud` claim App\OAuth\AudienceStampingAccessTokenRepository stamps on every token;
-    #   3. the RFC 8707 audience validation of phase 5, which compares by *exact equality*.
-    # No trailing slash, and it is the absolute URL of /api/v1/mcp — the value a client sends in
-    # its `resource` parameter. The defaults live in .env / .env.dev / .env.test; a real
-    # environment variable wins over all three.
+    #   3. App\Security\McpTokenAudienceVerifier's RFC 8707 audience validation, which compares
+    #      by *exact equality*.
+    # No trailing slash, and it is the absolute URL of **/api/v1/mcp-authoring** — the protected
+    # endpoint, not the public read one, because the resource identifier has to be the thing that
+    # answers 401. It is the value a client sends in its `resource` parameter. The defaults live in
+    # .env / .env.dev / .env.test; a real environment variable wins over all three.
     app.mcp_resource_uri: '%env(MCP_RESOURCE_URI)%'
 
 services:

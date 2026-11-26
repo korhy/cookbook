@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Mcp\Tool;
+namespace App\Tests\Mcp\Tool\Read;
 
 use App\Entity\Category;
-use App\Mcp\Tool\CategoryListTool;
+use App\Mcp\Tool\Read\CategoryListTool;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 

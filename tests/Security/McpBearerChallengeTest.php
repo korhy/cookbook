@@ -14,14 +14,16 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
 /**
- * The challenge is tested in isolation because it is **not wired yet** — phase 5 attaches it to
- * the `mcp_authoring` firewall. Until then this is the only thing that says whether it answers
- * correctly, and the `resource_metadata` pointer is the part that matters: it is how a client gets
- * from a bare 401 to the authorization server without a single URL configured by hand.
+ * The challenge in isolation: exactly what it puts in the header, for each of the three cases it
+ * answers. The `resource_metadata` pointer is the part that matters — it is how a client gets from
+ * a bare 401 to the authorization server without a single URL configured by hand.
+ *
+ * That it is actually reached, as the `mcp_authoring` firewall's entry point and access-denied
+ * handler, is `tests/Api/McpAuthoringEndpointTest.php`'s job; this file is about the shape.
  */
 final class McpBearerChallengeTest extends TestCase
 {
-    private const METADATA_URL = 'https://api.example.test/.well-known/oauth-protected-resource/api/v1/mcp';
+    private const METADATA_URL = 'https://api.example.test/.well-known/oauth-protected-resource/api/v1/mcp-authoring';
 
     /**
      * RFC 6750 §3.1: a request that carried no credentials has not failed authentication, so the
@@ -96,7 +98,7 @@ final class McpBearerChallengeTest extends TestCase
 
         return new McpBearerChallenge(new DiscoveryMetadataProvider(
             $urlGenerator,
-            new McpResourceUri('https://api.example.test/api/v1/mcp'),
+            new McpResourceUri('https://api.example.test/api/v1/mcp-authoring'),
             ['authorization_code', 'refresh_token'],
             ['mcp:write'],
         ));

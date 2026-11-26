@@ -115,9 +115,10 @@ ensure_jwt_keypair() {
 # later, as league's "Unable to read key from file" pointing into vendor/.
 #
 # It skips rather than failing the boot, unlike the database step. Halting here would
-# take the whole API down — Radiant included — for a subsystem nothing consumes before
-# phase 5. The API stays up, only /oauth2/* cannot issue a token, and the first boot
-# after the variable is set creates the pair correctly with nothing to repair.
+# take the whole API down — Radiant included — and the public read API does not depend
+# on OAuth. The API stays up, only /oauth2/* cannot issue a token and the MCP authoring
+# endpoint cannot be reached, and the first boot after the variable is set creates the
+# pair correctly with nothing to repair.
 ensure_oauth_keypair() {
 	[ "${APP_GENERATE_OAUTH_KEYS:-1}" = "1" ] || return 0
 

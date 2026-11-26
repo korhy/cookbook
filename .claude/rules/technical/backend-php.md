@@ -26,7 +26,7 @@ paths:
 
 ## Dependency injection
 
-- Constructor injection with promoted `readonly` properties. `App\Mcp\Tool\RecipeSearchTool` is the
+- Constructor injection with promoted `readonly` properties. `App\Mcp\Tool\Read\RecipeSearchTool` is the
   reference shape:
   ```php
   public function __construct(private readonly RecipeRepository $recipeRepository) {}

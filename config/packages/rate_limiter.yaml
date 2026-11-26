@@ -1,7 +1,9 @@
 framework:
     rate_limiter:
-        # Successful writes, keyed on the token fingerprint. Bounds the damage a leaked
-        # MCP_WRITE_TOKEN can do before it is rotated.
+        # Successful writes, keyed on the authenticated identity — the OAuth client plus the user
+        # it acts for, NOT the access token, which lives an hour and would hand a caller a fresh
+        # budget with every refresh. A valid grant is not a licence to create 10,000 drafts, and
+        # OAuth has nothing to say about volume. See App\Service\Mcp\McpWriteGuard.
         mcp_write:
             policy: 'sliding_window'
             limit: 20
@@ -14,15 +16,23 @@ framework:
             limit: 30
             interval: '1 hour'
 
-        # Failed authentication attempts, keyed on the caller's IP. Only consumed on failure, so a
-        # legitimate client's writes never exhaust it — this exists purely to blunt token guessing.
+        # Rejected requests at the MCP authoring endpoint, keyed on the caller's IP and consumed
+        # only on failure, so a legitimate client's writes never touch it.
+        #
+        # Its original job — blunting guesses at the 32-character MCP_WRITE_TOKEN — expired with
+        # that secret: an RSA-signed JWT is not guessable. What is left is real all the same.
+        # Refusing a bad token costs a signature verification plus a revocation lookup in
+        # Postgres, every time, so an anonymous caller can make this server work by presenting
+        # garbage. Consumed by App\EventListener\McpAuthenticationFailureListener, which answers
+        # 429 once the window is empty.
         mcp_write_auth:
             policy: 'sliding_window'
             limit: 10
             interval: '15 minutes'
 
-# The limiter semantics are covered by McpWriteGuardTest, which builds its own limiters with
-# explicit limits and in-memory storage. Production limits here would only make integration tests
+# The limiter semantics are covered by McpWriteGuardTest and
+# McpAuthenticationFailureListenerTest, which build their own limiters with explicit limits and
+# in-memory storage. Production limits here would only make integration tests
 # order-dependent and flaky, since the cache-backed window survives between test methods.
 when@test:
     framework:
