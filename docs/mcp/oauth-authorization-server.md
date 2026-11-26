@@ -529,17 +529,54 @@ the parameter is gone from the advertised schema, deliberately.
 
 ---
 
-## What is not here yet
+## The flow, covered end to end
 
-| Phase | Missing piece |
-|---|---|
-| 6 | End-to-end tests of the whole browser flow — a real client driving `/oauth2/authorize`, the consent screen and `/oauth2/token`, then calling an authoring tool with the token that comes back |
+**Nothing on the original plan is outstanding.** Phase 6 was the last gap, and
+`tests/Controller/OAuth2AuthorizationFlowTest.php` closes it: eleven tests driving the browser leg
+with a real client, from the authorization request through the consent screen to `/oauth2/token`,
+and on to an authoring tool called with the token that comes back.
 
-Everything the write path needs at runtime is in place and covered: `tests/Api/McpAuthoringEndpointTest.php`
-proves the `401` with its `resource_metadata` pointer, the `403 insufficient_scope`, the refusal of a
-signed token minted for another audience, the draft quarantine and the audit trail, with tokens
-minted through the real issuing path. What phase 6 adds is the half no test here exercises: the
-*browser* leg, from authorization request to code to token.
+Until it existed, the two halves were each covered and the join between them was not.
+`OAuth2ConsentTest` stopped at the redirect carrying a code; `McpAuthoringEndpointTest` started from
+a token it minted itself. Nothing drove the token endpoint, so nothing proved that a code this
+server issues can be exchanged at all.
+
+What the happy path asserts, in one sentence: **the Admin logs in, approves, and a draft appears,
+with no credential typed anywhere.** That is the objective the whole build-out was for, and this is
+the only test that observes it whole. Along the way it pins three things no other test could see:
+
+- **`state` comes back untouched.** RFC 6749 §4.1.2 makes it the *client's* CSRF defence, and it
+  only works if the server echoes it, so that a client can match the redirect it receives against
+  the request it sent.
+- **`aud` is `[client identifier, resource URI]` on a token the endpoint really issued.**
+  `AccessTokenAudienceTest` pins that order on the decorator in isolation; here it is read off the
+  wire, with the real repository, the real client entity and the real signing key in the chain. The
+  order is load-bearing — `BearerTokenValidator` recovers the client identifier from `aud[0]`
+  positionally — and the refresh grant is asserted separately, because it is a different code path
+  and the stamping is the kind of thing that gets lost on a path nobody looked at.
+- **The refreshed token is *used*, not merely received**: it is presented to
+  `/api/v1/mcp-authoring` and accepted.
+
+The refusals carry as much weight, because each is a property a passing happy path cannot
+distinguish from a broken one:
+
+| Refusal | Answer | Why it matters |
+|---|---|---|
+| A well-formed but **wrong `code_verifier`** | `400 invalid_grant` | The shape of the attack PKCE exists for: the code intercepted, the verifier not. A *malformed* verifier is a different error (`invalid_request`), which would satisfy the assertion for the wrong reason |
+| A **code replayed** after a successful exchange | `400 invalid_grant` | Single-use, so interception followed by replay buys nothing |
+| A **refresh token reused** after rotation | `400 invalid_grant` | `revoke_refresh_tokens: true`. Rotation is the only thing bounding a *stolen* refresh token, because the public client holds no secret to distinguish the thief's request from its own |
+| A code redeemed with a **different `redirect_uri`** | `400 invalid_request` | Not `invalid_grant`: league classifies the mismatch as a malformed parameter (`AuthCodeGrant.php:228`). That is a vendor's classification rather than a rule of the spec, so the test pins it |
+| An **unregistered `redirect_uri`** | `401 invalid_client`, **and no `Location` header at all** | The absent redirect is the security assertion. The danger of a loose redirect URI is the server sending something to an address the attacker chose, so even a redirect carrying an error would leak that a valid client and a logged-in Admin are on the other end. league refuses before the consent screen is built, which is also why this case never reaches the Admin to approve |
+| A **refused consent** | `error=access_denied`, no `code` | And the token endpoint takes nothing in a code's place, so "no code in the redirect" really does mean no token is reachable |
+
+The test registers its own public client through `ClientManagerInterface` and calls
+`disableReboot()`, for a reason worth stating: the test *is* the chain. Four requests share one
+flow, and a reboot between them would throw away the in-memory client, the session holding the CSRF
+token, and the authorization code and access token league persists in memory under `when@test`.
+
+The resource-server side remains `tests/Api/McpAuthoringEndpointTest.php`'s business: the `401` with
+its `resource_metadata` pointer, the `403 insufficient_scope`, the refusal of a signed token minted
+for another audience, the draft quarantine and the audit trail.
 
 **`POST /oauth2/token` no longer answers a bare `500` when the keypair cannot be read.**
 `League\OAuth2\Server\CryptKey` reads and decrypts the key in its *constructor*, so a missing file
